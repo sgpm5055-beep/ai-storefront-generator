@@ -1,0 +1,15 @@
+{
+  "name": "happy",
+  "why": "A clear, specific creator with real demand signals. Tests that output is specific enough to pass the swap test: the copy must not read as if it could belong to any other creator.",
+  "input": {
+    "description": "I teach eggless baking to home cooks across small towns in India. Most of them have no oven at all, so everything I make works in a pressure cooker or a kadai. People constantly ask me why their cake sinks in the middle, and how to measure flour and sugar without a weighing scale since nobody here owns one."
+  },
+  "expect": {
+    "niche": "food",
+    "validation": ["pass", "repaired"],
+    "minProducts": 2,
+    "minFormats": 2,
+    "mustMention": ["cooker", "kadai", "oven", "scale", "sink", "cup", "measur", "egg"],
+    "mustNotMention": ["guarantee", "guaranteed", "overnight", "get rich"]
+  }
+}

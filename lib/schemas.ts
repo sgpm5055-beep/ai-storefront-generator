@@ -129,8 +129,15 @@ function trimTo(text: string, max: number): string {
 
   // 1. A clause boundary (colon or dash) that leaves a usable head.
   //    "Name: Subtitle" keeps "Name", which reads as a finished title.
-  const boundary = t.slice(0, max + 1).search(/\s*[:\u2014\u2013]|\s[-]\s/);
-  if (boundary >= 12) return clean(t.slice(0, boundary));
+  //    Takes the LAST usable boundary, not the first: a title like
+  //    "1:1 Physics Doubt Audit: Find Where You Lose Marks" has a colon at
+  //    index 1 that is too short to use, and stopping there would skip the
+  //    real boundary and fall through to a mid-sentence word cut.
+  const boundaries = [...t.slice(0, max + 1)
+    .matchAll(/\s*[:\u2014\u2013]|\s[-]\s/g)]
+    .map((m) => m.index!)
+    .filter((i) => i >= 12);
+  if (boundaries.length) return clean(t.slice(0, boundaries[boundaries.length - 1]));
 
   // 2. The last sentence or list break before the limit.
   const punct = Math.max(

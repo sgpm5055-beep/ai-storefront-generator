@@ -15,6 +15,18 @@ describe('clampCopy: never show the creator a cut-off word', () => {
     expect(clampCopy(mk({ title: t })).products[0].title).toBe(t);
   });
 
+  // Found by a real seeded sample: "1:1 Physics Doubt Audit: Find Exactly
+  // Where You Keep Losing Marks" was cut to "...Find Exactly Where You Keep",
+  // because the colon in "1:1" was the first boundary found and was rejected
+  // as too short, so the real boundary was never considered.
+  it('ignores a too-short early boundary and uses the real one', () => {
+    const out = clampCopy(mk({
+      title: '1:1 Physics Doubt Audit: Find Exactly Where You Keep Losing Marks',
+    })).products[0].title;
+    expect(out).toBe('1:1 Physics Doubt Audit');
+    expect(out.length).toBeLessThanOrEqual(60);
+  });
+
   it('cuts an over-long title at its colon, keeping a complete title', () => {
     const out = clampCopy(mk({
       title: 'Cups, Spoons & Katoris: The No-Weighing-Scale Measuring Guide For Home Bakers',

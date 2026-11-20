@@ -1,0 +1,11 @@
+{
+  "name": "thin",
+  "why": "Enough words to pass input validation, but no actual expertise. The model itself must judge it unteachable and STOP rather than inventing a skill the creator never claimed. Hallucinating here is the worst failure mode in the build.",
+  "input": {
+    "description": "Hey guys welcome to my page, I post daily vibes and random content about my life and my day. Sometimes I share what I ate or where I went with my friends on the weekend. I like travelling sometimes and I also enjoy listening to music a lot. Follow me for more updates and stay tuned because I post regularly, thanks for all the love and support you give me every single day."
+  },
+  "expect": {
+    "stops": true,
+    "stopReasonMentions": ["enough", "more", "tell us", "could not", "couldn't", "teach", "sell", "find"]
+  }
+}

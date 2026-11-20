@@ -77,7 +77,16 @@ export interface BuildStop {
 }
 
 export class PipelineStop extends Error {
-  constructor(readonly reason: string, readonly canDescribe = true) {
+  /**
+   * `reason` is shown to the creator and must always say what to do next.
+   * `diagnosis` is the internal why, kept out of the UI: the model's own
+   * wording is accurate but reads as a judgement of the person.
+   */
+  constructor(
+    readonly reason: string,
+    readonly canDescribe = true,
+    readonly diagnosis?: string,
+  ) {
     super(reason);
     this.name = 'PipelineStop';
   }
@@ -196,9 +205,16 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
     followers,
   });
   if (!profile.teachable || profile.stop_reason) {
+    // The model's stop_reason is a diagnosis ("a personal diary page with no
+    // expertise") and reads as a judgement of the person. The creator gets a
+    // fixed, actionable sentence instead; the diagnosis stays in the logs.
+    // PRD §States: a stop must always offer the next step.
     throw new PipelineStop(
-      profile.stop_reason ?? "We couldn't find something teachable on this profile.",
+      input.handle
+        ? "We read your posts but couldn't find a skill you teach. Tell us in your own words what you help people with, and we'll build from that."
+        : "We couldn't find a skill to build on. Try again with what you teach, who you help, and the question people ask you most.",
       true,
+      profile.stop_reason ?? undefined,
     );
   }
   await progress({ stage: 'profile', status: 'done', detail: profile.niche.replace(/_/g, ' ') });

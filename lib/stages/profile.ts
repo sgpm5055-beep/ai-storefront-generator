@@ -21,7 +21,7 @@ Rules you must follow:
 - Never invent credentials, years of experience, client counts, qualifications or results. If the text does not say it, it is not true.
 - "Unknown" is a valid answer. A thin profile is a thin profile.
 - Set teachable to false for meme pages, brand accounts, reposters and personal diaries with nothing to teach.
-- Set stop_reason to a short sentence only when there is genuinely nothing to build a store from. Otherwise null.
+- Set stop_reason to a short sentence only when there is genuinely nothing to build a store from. Otherwise null. This is an internal diagnosis, not shown to the creator; say plainly what was missing.
 - Judge language from how they actually speak: en for English, hinglish for Hindi-English mixing, hi for mostly Hindi.
 - niche describes WHAT THE CREATOR DOES, not who follows them. A baker teaching women in small towns is food, not students. A fitness coach training exam aspirants is fitness, not exam_prep. Pick exam_prep or students only when the subject taught is studying itself.
 - name_guess is a person's name or handle, nothing else. If the text does not give one, return an empty string.
