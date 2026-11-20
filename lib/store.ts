@@ -125,8 +125,20 @@ export async function saveResult(storeId: string, r: BuildResult): Promise<void>
   });
 }
 
-export async function markFailed(storeId: string, reason: string): Promise<void> {
-  await db().from('stores').update({ status: 'failed' }).eq('id', storeId);
+export async function markFailed(
+  storeId: string,
+  reason: string,
+  found?: { name: string | null; avatarUrl: string | null; followers: number | null },
+): Promise<void> {
+  // Keep whatever the scrape already learned. A build that found the
+  // creator and then stopped should still be able to greet them by name;
+  // dropping it makes the failure screen read as if nothing worked.
+  await db().from('stores').update({
+    status: 'failed',
+    ...(found?.name ? { name: found.name } : {}),
+    ...(found?.avatarUrl ? { avatar_url: found.avatarUrl } : {}),
+    ...(found?.followers ? { followers: found.followers } : {}),
+  }).eq('id', storeId);
   await recordStage(storeId, 'check', 'failed', undefined, reason);
 }
 

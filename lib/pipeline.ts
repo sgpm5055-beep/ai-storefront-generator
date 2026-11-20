@@ -74,6 +74,12 @@ export interface BuildStop {
   ok: false;
   reason: string;
   canDescribe: boolean;
+  /**
+   * What the scrape found before the stop. A build that identified the
+   * creator and then stopped should still greet them by name: throwing
+   * this away makes the failure screen look like nothing worked.
+   */
+  found?: { name: string | null; avatarUrl: string | null; followers: number | null };
 }
 
 export class PipelineStop extends Error {
@@ -86,6 +92,7 @@ export class PipelineStop extends Error {
     readonly reason: string,
     readonly canDescribe = true,
     readonly diagnosis?: string,
+    readonly found?: { name: string | null; avatarUrl: string | null; followers: number | null },
   ) {
     super(reason);
     this.name = 'PipelineStop';
@@ -105,7 +112,9 @@ export async function runPipeline(
     return await execute(input, onProgress);
   } catch (err) {
     if (err instanceof PipelineStop) {
-      return { ok: false, reason: err.reason, canDescribe: err.canDescribe };
+      return {
+        ok: false, reason: err.reason, canDescribe: err.canDescribe, found: err.found,
+      };
     }
     if (err instanceof ScrapeError) {
       return { ok: false, reason: scrapeMessage(err.kind), canDescribe: true };
@@ -215,6 +224,7 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
         : "We couldn't find a skill to build on. Try again with what you teach, who you help, and the question people ask you most.",
       true,
       profile.stop_reason ?? undefined,
+      { name: displayName, avatarUrl, followers },
     );
   }
   await progress({ stage: 'profile', status: 'done', detail: profile.niche.replace(/_/g, ' ') });

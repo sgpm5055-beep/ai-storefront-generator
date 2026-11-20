@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       if (result.ok) {
         await saveResult(storeId, result);
       } else {
-        await markFailed(storeId, result.reason);
+        await markFailed(storeId, result.reason, result.found);
       }
     } catch (err) {
       await markFailed(storeId, (err as Error).message);
