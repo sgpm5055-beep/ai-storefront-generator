@@ -38,6 +38,16 @@ export const TARGET_POSTS = 5;
  * Over-fetching beyond the target is what absorbs music-only reels.
  */
 export const MAX_TRANSCRIBE_ATTEMPTS = 8;
+
+/**
+ * How many posts are downloaded and transcribed at once.
+ *
+ * Sized against the measured cost: one post is ~20-25s (download +
+ * Deepgram), and Vercel Hobby caps a function at 300s. Five in sequence
+ * took a real build to 250s. Four at a time keeps the common case near
+ * one batch while leaving the early stop useful.
+ */
+export const TRANSCRIBE_BATCH = 4;
 /** Long reels cost download time and add little. Skip them. */
 export const MAX_REEL_SECONDS = 120;
 

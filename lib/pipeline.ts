@@ -9,8 +9,7 @@ import { fetchProfile, fetchPosts, ScrapeError, scrapeMessage } from './scrape';
 import { transcribeVideo, extractImageText } from './transcribe';
 import {
   rankPosts, buildExtracted, assessSignal, hasEnough,
-  TARGET_POSTS, type ExtractedPost,
-} from './select';
+  TARGET_POSTS, type ExtractedPost, TRANSCRIBE_BATCH } from './select';
 import { runProfileStage, describeIsUsable } from './stages/profile';
 import { runDemandStage } from './stages/demand';
 import { runProductsStage, selectProducts } from './stages/products';
@@ -150,22 +149,33 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
     // Stages 2 and 3 — rank, then transcribe until enough posts are usable.
     await progress({ stage: 'transcribe', status: 'running', detail: 'Listening to your top posts' });
     const ranked = rankPosts(posts);
-    for (const p of ranked) {
-      if (hasEnough(extracted) || extracted.length >= TARGET_POSTS + 3) break;
+
+    // Transcribed in parallel batches, not one at a time. Each post costs
+    // ~20-25s (download + Deepgram), so five in sequence is ~175s and a
+    // measured end-to-end handle build hit 250s against Vercel's 300s
+    // ceiling. Batching pays one post's latency per batch instead.
+    // Batches rather than all-at-once so the early stop still works:
+    // a creator whose first posts are rich does not pay for the rest.
+    const readOne = async (p: (typeof ranked)[number]) => {
       try {
         if (p.videoUrl) {
           const t = await transcribeVideo(p.videoUrl);
-          extracted.push(buildExtracted(p, t.text, 'transcript'));
-        } else if (p.imageUrls.length) {
-          const t = await extractImageText(p.imageUrls);
-          extracted.push(buildExtracted(p, t, 'image_text'));
-        } else {
-          extracted.push(buildExtracted(p, '', 'transcript'));
+          return buildExtracted(p, t.text, 'transcript');
         }
+        if (p.imageUrls.length) {
+          return buildExtracted(p, await extractImageText(p.imageUrls), 'image_text');
+        }
+        return buildExtracted(p, '', 'transcript');
       } catch {
         // One bad post never fails a build: fall back to its caption.
-        extracted.push(buildExtracted(p, '', 'transcript'));
+        return buildExtracted(p, '', 'transcript');
       }
+    };
+
+    for (let i = 0; i < ranked.length; i += TRANSCRIBE_BATCH) {
+      if (hasEnough(extracted) || extracted.length >= TARGET_POSTS + 3) break;
+      const batch = ranked.slice(i, i + TRANSCRIBE_BATCH);
+      extracted.push(...await Promise.all(batch.map(readOne)));
       await progress({
         stage: 'transcribe', status: 'running',
         detail: `Read ${extracted.filter((e) => !e.lowSignal).length} of ${TARGET_POSTS} posts`,
