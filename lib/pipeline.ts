@@ -220,7 +220,13 @@ async function execute(
     }
 
     const verdict = assessSignal(extracted);
-    if (!verdict.proceed) throw new PipelineStop(verdict.reason!, true);
+    // The scrape already found them by this point. Dropping that identity
+    // makes the failure screen say "We couldn't finish this one" to a
+    // creator we greeted by name three steps earlier.
+    if (!verdict.proceed) {
+      throw new PipelineStop(verdict.reason!, true, undefined,
+        { name: displayName, avatarUrl, followers });
+    }
     await progress({ stage: 'transcribe', status: 'done', detail: `${verdict.usable} posts with usable content` });
   }
 
