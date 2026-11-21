@@ -8,6 +8,11 @@ html, body {
   background: #FBF9F5;
   color: #15130F;
   -webkit-text-size-adjust: 100%;
+  /* Tailwind's sans stack points at --font-sans; without it every page
+     falls back to the browser's serif default, which is not the design. */
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans Devanagari',
+    sans-serif;
 }
 
 /* Inputs must be >=16px or iOS Safari zooms the whole page on focus. */

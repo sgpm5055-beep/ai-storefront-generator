@@ -1,5 +1,14 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
+
+// Devanagari subset included: creators write in Hindi and Hinglish, and
+// the bio is often mixed script.
+const sans = Inter({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-sans',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   // Without this, OG image URLs resolve against localhost in production
@@ -21,8 +30,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-dvh antialiased">{children}</body>
+    <html lang="en" className={sans.variable}>
+      <body className="min-h-dvh font-sans antialiased">{children}</body>
     </html>
   );
 }

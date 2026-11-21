@@ -38,7 +38,7 @@ export default async function Home() {
                 <a href={`/s/${s.slug}`}
                   className="card flex items-center justify-between px-4 py-3 hover:bg-paper">
                   <span className="font-medium">{s.name}</span>
-                  <span className="text-sm text-muted">{s.niche}</span>
+                  <span className="text-sm text-muted">{s.niche.replace(/_/g, ' ')}</span>
                 </a>
               </li>
             ))}
