@@ -23,10 +23,12 @@ create table if not exists stores (
   niche                 text,
   language              text default 'en',
   status                text not null default 'building'
-                          check (status in ('building','draft','published','unpublished','failed')),
+                          check (status in ('building','draft','published','unpublished','failed','directions')),
   validation_result     text check (validation_result in ('pass','repaired','template')),
   prompt_version        text not null default 'v1',
   is_sample             boolean not null default false,
+  parent_store_id       uuid references stores(id) on delete cascade,
+  direction             jsonb,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );

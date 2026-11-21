@@ -37,6 +37,11 @@ interface Case {
     stops?: boolean;
     stopReasonMentions?: string[];
     noInjectionEcho?: string;
+    /** Directions offered instead of a dead end. */
+    offersDirections?: boolean;
+    minDirections?: number;
+    maxDirections?: number;
+    directionsMustNotMention?: string[];
   };
 }
 
@@ -46,13 +51,78 @@ function runChecks(c: Case, result: Awaited<ReturnType<typeof runPipeline>>): Ch
   const out: Check[] = [];
   const e = c.expect;
 
+  const isDirections = result.ok === 'directions';
+  const dirs = isDirections ? result.drafts : [];
+
+  // A case that must offer directions: substance, but nothing taught.
+  if (e.offersDirections) {
+    out.push({
+      ok: isDirections,
+      label: 'offers directions instead of a dead end',
+      detail: isDirections ? `${dirs.length} drafts` : (result.ok ? 'built a normal store' : 'plain stop'),
+    });
+    if (isDirections) {
+      if (e.minDirections) {
+        out.push({
+          ok: dirs.length >= e.minDirections,
+          label: `>= ${e.minDirections} directions`, detail: String(dirs.length),
+        });
+      }
+      // The guarantee: every direction quotes the real input.
+      const src = (c.input.description ?? '').toLowerCase().replace(/[^a-z0-9 ]/g, '');
+      const unquoted = dirs.filter((d) => {
+        const q = d.direction.quote.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+        return q.length < 10 || !src.includes(q);
+      });
+      out.push({
+        ok: unquoted.length === 0,
+        label: 'every direction quotes the input',
+        detail: unquoted.length ? `${unquoted.length} unverifiable` : undefined,
+      });
+      // Each draft is stored as a guess, never as a read of the account.
+      out.push({
+        ok: dirs.every((d) => d.result.validation === 'template'
+          || d.result.validation === 'pass' || d.result.validation === 'repaired'),
+        label: 'drafts built cleanly',
+        detail: dirs.map((d) => d.result.validation).join(', '),
+      });
+      if (e.directionsMustNotMention) {
+        const blob = dirs.map((d) =>
+          `${d.direction.topic} ${d.direction.because} ${d.direction.seed}`).join(' ').toLowerCase();
+        const bad = e.directionsMustNotMention.filter((w) => blob.includes(w.toLowerCase()));
+        out.push({
+          ok: bad.length === 0, label: 'no credential claims',
+          detail: bad.length ? `FOUND: ${bad.join(', ')}` : undefined,
+        });
+      }
+      for (const d of dirs) {
+        out.push({
+          ok: true, label: `  direction: ${d.direction.topic}`,
+          detail: d.result.products.map((p) => `Rs.${p.price}`).join(' '),
+        });
+      }
+    }
+    return out;
+  }
+
   if (e.stops) {
     out.push({
       ok: !result.ok,
       label: 'stops instead of inventing',
-      detail: result.ok ? `built ${result.products.length} products anyway` : undefined,
+      detail: result.ok === 'directions'
+        ? `offered ${dirs.length} directions anyway`
+        : result.ok ? `built ${result.products.length} products anyway` : undefined,
     });
-    if (!result.ok && e.stopReasonMentions) {
+    // Gibberish must stop with NOTHING. This assertion is what defends
+    // the evidence guarantee against the directions feature.
+    if (e.maxDirections !== undefined) {
+      out.push({
+        ok: dirs.length <= e.maxDirections,
+        label: `<= ${e.maxDirections} directions`,
+        detail: String(dirs.length),
+      });
+    }
+    if (result.ok === false && e.stopReasonMentions) {
       const r = result.reason.toLowerCase();
       out.push({
         ok: e.stopReasonMentions.some((w) => r.includes(w.toLowerCase())),
@@ -63,8 +133,12 @@ function runChecks(c: Case, result: Awaited<ReturnType<typeof runPipeline>>): Ch
     return out;
   }
 
-  out.push({ ok: result.ok, label: 'builds', detail: result.ok ? undefined : result.reason });
-  if (!result.ok) return out;
+  out.push({
+    ok: result.ok === true, label: 'builds',
+    detail: result.ok === true ? undefined
+      : result.ok === 'directions' ? 'offered directions' : result.reason,
+  });
+  if (result.ok !== true) return out;
 
   // Everything the model wrote, lowercased, for the text assertions.
   const blob = [
@@ -165,10 +239,17 @@ for (const f of files) {
   allOk ? pass++ : fail++;
   console.log(`  \x1b[2m${secs}s\x1b[0m`);
 
-  if (result.ok) {
+  if (result.ok === true) {
     console.log(`  \x1b[2mbio: ${result.bio}\x1b[0m`);
     for (const p of result.products) {
       console.log(`  \x1b[2m  [${p.ladderRole}/${p.format}] Rs.${p.price} ${p.title}\x1b[0m`);
+    }
+  } else if (result.ok === 'directions') {
+    for (const d of result.drafts) {
+      console.log(`  \x1b[2m${d.direction.topic} — "${d.direction.quote.slice(0, 60)}"\x1b[0m`);
+      for (const p of d.result.products) {
+        console.log(`  \x1b[2m    [${p.format}] Rs.${p.price} ${p.title}\x1b[0m`);
+      }
     }
   }
 }

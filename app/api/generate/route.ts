@@ -8,7 +8,7 @@
 import { after } from 'next/server';
 import { runPipeline, type ProgressEvent } from '@/lib/pipeline';
 import { normaliseHandle } from '@/lib/scrape';
-import { createBuild, recordStage, saveResult, markFailed } from '@/lib/store';
+import { createBuild, recordStage, saveResult, markFailed, saveDrafts } from '@/lib/store';
 import { checkRateLimit, logEvent } from '@/lib/db';
 import { describeIsUsable } from '@/lib/stages/profile';
 
@@ -68,7 +68,11 @@ export async function POST(req: Request) {
       const result = await runPipeline(
         handle ? { handle } : { description }, onProgress,
       );
-      if (result.ok) {
+      if (result.ok === 'directions') {
+        // A substantive creator who teaches nothing: three drafts to
+        // choose from rather than a dead end.
+        await saveDrafts(storeId, result.drafts);
+      } else if (result.ok) {
         await saveResult(storeId, result);
       } else {
         await markFailed(storeId, result.reason, result.found);

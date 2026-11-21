@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkDraft, checkField, hasBlockingViolation, detectInjection,
-  regulatedNicheFor,
-} from './guardrails';
+  regulatedNicheFor, assertsCredential } from './guardrails';
 
 describe('regulated niche mapping', () => {
   it('maps the three regulated families', () => {
@@ -100,5 +99,33 @@ describe('prompt-injection detection', () => {
   });
   it('does not flag ordinary bios', () => {
     expect(detectInjection('Yoga teacher in Pune. DM for classes.')).toHaveLength(0);
+  });
+});
+
+describe('assertsCredential: a direction may not claim what we cannot evidence', () => {
+  it.each([
+    'A live session on how gifting actually works',
+    'Talk through how you got your book published',
+    'A monthly Q&A with the people who follow you',
+    'Share how you plan a shoot day',
+  ])('allows a plain proposal: %s', (t) => {
+    expect(assertsCredential(t)).toBe(false);
+  });
+
+  it.each([
+    'Gifting Masterclass by an expert in thoughtful giving',
+    'Learn from 10 years of experience on camera',
+    'A proven system for growing your audience',
+    'Trusted by brands across India',
+    'She has helped 5,000 creators get their first deal',
+    'Award-winning comedy writing, taught properly',
+    'Certified coaching for new authors',
+  ])('rejects a credential claim: %s', (t) => {
+    expect(assertsCredential(t)).toBe(true);
+  });
+
+  it('does not fire on a number that is not a credential', () => {
+    // "3 sessions" and "90 minutes" describe the offer, not the person.
+    expect(assertsCredential('Three 90 minute sessions on writing jokes')).toBe(false);
   });
 });

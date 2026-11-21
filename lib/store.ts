@@ -4,6 +4,7 @@
  */
 import { db, newEditToken, slugify, uniqueSlug, logEvent } from './db';
 import type { BuildResult, StageName } from './pipeline';
+import type { Direction } from './schemas';
 
 export interface StoreRow {
   id: string;
@@ -16,11 +17,13 @@ export interface StoreRow {
   bio: string | null;
   niche: string | null;
   language: string | null;
-  status: 'building' | 'draft' | 'published' | 'unpublished' | 'failed';
+  status: 'building' | 'draft' | 'published' | 'unpublished' | 'failed' | 'directions';
   validation_result: string | null;
   ownership_code: string | null;
   ownership_confirmed_at: string | null;
   is_sample: boolean;
+  parent_store_id: string | null;
+  direction: { topic: string; because: string; quote: string } | null;
   created_at: string;
 }
 
@@ -123,6 +126,100 @@ export async function saveResult(storeId: string, r: BuildResult): Promise<void>
   await logEvent(storeId, 'generation_completed', {
     validation: r.validation, products: r.products.length,
   });
+}
+
+/**
+ * Three speculative drafts for a creator who teaches nothing directly.
+ *
+ * Each draft is a real store the creator can edit and publish, but it is
+ * stored as a guess: validation_result is forced to 'template', which is
+ * what renders the "this is a starting point, not a read of your account"
+ * banner on the edit page. The parent row holds no products of its own.
+ */
+export async function saveDrafts(
+  parentStoreId: string,
+  drafts: Array<{ direction: Direction; result: BuildResult }>,
+): Promise<Array<{ slug: string; editToken: string }>> {
+  const made: Array<{ slug: string; editToken: string }> = [];
+  for (const { direction, result } of drafts) {
+    const slug = await uniqueSlug(slugify(`${result.name}-${direction.topic}`, null));
+    const { token, hash } = newEditToken();
+
+    const { data, error } = await db().from('stores').insert({
+      slug,
+      edit_token_hash: hash,
+      handle: result.handle,
+      input_type: result.handle ? 'handle' : 'description',
+      description_text: direction.seed,
+      name: result.name,
+      avatar_url: result.avatarUrl,
+      followers: result.followers,
+      bio: result.bio,
+      niche: result.niche,
+      language: result.language,
+      status: 'draft',
+      // Never 'pass': nothing here was stated by the creator.
+      validation_result: 'template',
+      parent_store_id: parentStoreId,
+      direction: {
+        topic: direction.topic, because: direction.because, quote: direction.quote,
+      },
+      unused_candidates: result.unusedCandidates,
+    }).select('id').single();
+    if (error) throw new Error(`could not save draft: ${error.message}`);
+
+    const { error: pErr } = await db().from('products').insert(
+      result.products.map((p) => ({
+        store_id: data.id, position: p.position, ladder_role: p.ladderRole,
+        format: p.format, title: p.title, promise: p.promise,
+        description: p.description, points: p.points, price: p.price,
+        suggested_price: p.suggestedPrice, price_reason: p.priceReason,
+        scope: p.scope, effort: p.effort, demand_item: p.demandItem,
+        evidence: p.evidence,
+      })),
+    );
+    if (pErr) throw new Error(`could not save draft products: ${pErr.message}`);
+    made.push({ slug, editToken: token });
+  }
+
+  // The tokens live on the parent row, which is itself only reachable by
+  // its own unguessable build id. A child's token is never recoverable
+  // from the child, so an unchosen draft stays unaddressable.
+  await db().from('stores').update({
+    status: 'directions',
+    direction: { drafts: made },
+  }).eq('id', parentStoreId);
+  await logEvent(parentStoreId, 'directions_offered', { count: drafts.length });
+  return made;
+}
+
+/**
+ * The drafts offered for a parent build, for the chooser screen.
+ *
+ * No edit token here: only its hash is stored, which is the point. The
+ * chooser links by slug and the edit link is minted when the creator
+ * picks one, so a draft nobody chose was never addressable.
+ */
+export async function getDrafts(parentStoreId: string): Promise<Array<{
+  id: string; slug: string | null; name: string | null;
+  direction: { topic: string; because: string; quote: string } | null;
+  products: Array<{ title: string | null; price: number | null; format: string }>;
+}>> {
+  const { data } = await db().from('stores')
+    .select('id,slug,name,direction')
+    .eq('parent_store_id', parentStoreId).order('created_at');
+
+  const out = [];
+  for (const row of data ?? []) {
+    const { data: prods } = await db().from('products')
+      .select('title,price,format').eq('store_id', row.id).order('position');
+    out.push({
+      id: row.id, slug: row.slug, name: row.name,
+      direction: row.direction as { topic: string; because: string; quote: string } | null,
+      products: prods ?? [],
+    });
+  }
+  return out;
 }
 
 export async function markFailed(

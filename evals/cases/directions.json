@@ -1,0 +1,15 @@
+{
+  "name": "directions",
+  "why": "A substantive creator who teaches nothing: real output, real opinions, no skill on offer. Must NOT dead-end and must NOT invent credentials; every direction has to quote the input verbatim. Text is a condensed transcript of @mostlysane's real reels, kept deliberately entertainment-heavy so no single subject reads as something she teaches.",
+  "input": {
+    "description": "Ok now scroll for fun, I am out of captions. Just out here vibing with the gang on the show, catch the entire episode on our youtube, link in bio. Current hyper fixation is breakfast. Styled by my team, jewels by the brand, baldy in the back. Honestly the shoot ran nine hours and I survived on vada pav. Gifting भी ना एक art है, easy नहीं है. My rangoli for Diwali this year is actually edible. Enemies to lovers, fake dating, forced proximity, grumpy x sunshine, these are my whole personality. Anyway, scroll on, see you in the next one."
+  },
+  "expect": {
+    "offersDirections": true,
+    "minDirections": 2,
+    "directionsMustNotMention": [
+      "expert", "proven", "trusted", "certified", "qualified",
+      "years of experience", "award-winning", "renowned"
+    ]
+  }
+}

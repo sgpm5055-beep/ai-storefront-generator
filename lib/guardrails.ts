@@ -128,3 +128,30 @@ export function detectInjection(text: string): string[] {
 export function requiresEducationalFraming(niche: RegulatedNiche): boolean {
   return niche === 'money';
 }
+
+/**
+ * Credential language, for Stage 4b directions.
+ *
+ * A direction is a guess about what a creator *could* offer. The moment
+ * it says "expert" or "10 years", it stops being a guess and becomes a
+ * claim about the person — which is exactly what the evidence rule
+ * forbids. Any direction matching this is dropped, not repaired: there
+ * is no evidence behind it to repair it with.
+ */
+const CREDENTIAL_PATTERNS = [
+  /\b(expert|expertise|specialist|authority|guru|veteran)\b/i,
+  /\b(proven|trusted|certified|qualified|accredited|licensed)\b/i,
+  /\b(renowned|acclaimed|award[- ]winning|celebrated|leading|top|best[- ]selling)\b/i,
+  /\b\d+\+?\s*(years?|yrs?)\b/i,
+  /\b\d+[,\d]*\+?\s*(clients?|students?|customers?|people)\s+(taught|trained|helped|served)\b/i,
+  /\bhelped\s+\d+[,\d]*\+?\b/i,
+  /\byears\s+of\s+(experience|practice)\b/i,
+];
+
+/**
+ * True when the text claims a credential we cannot evidence.
+ * Used to filter directions before they reach the creator.
+ */
+export function assertsCredential(text: string): boolean {
+  return CREDENTIAL_PATTERNS.some((p) => p.test(text));
+}

@@ -40,10 +40,57 @@ export const ProfileSchema = z.object({
   signal_strength: z.enum(['strong', 'adequate', 'thin']),
   teachable: z.boolean()
     .describe('False for meme pages, brand accounts and reposters'),
+  /**
+   * Is there a real person with real output here, even if they name no
+   * teachable skill? A comedian with 8.6M followers is substantive but
+   * not teachable; a reposter is neither. `teachable` alone cannot tell
+   * those apart, and conflating them turned a famous creator into a dead
+   * end. Only a substantive creator is offered directions.
+   */
+  has_substance: z.boolean()
+    .describe('True when there is a real person with real output, even if they teach nothing'),
   stop_reason: z.string().nullable()
     .describe('Why generation should stop, or null to continue'),
 });
 export type Profile = z.infer<typeof ProfileSchema>;
+
+/**
+ * Stage 4b — Directions. Runs ONLY when Stage 4 found substance but no
+ * teachable skill (a comedian, an actor, a public figure).
+ *
+ * This is the one schema in the system allowed to hold something the
+ * evidence does not directly support, so the boundary is structural:
+ * a Direction has no price, no title and no ladder role, and therefore
+ * cannot be rendered as a product. It is an INPUT to a normal build.
+ * Everything downstream still demands evidence in the usual way.
+ */
+export const DirectionSchema = z.object({
+  /** A subject the creator could teach. Not a product title. */
+  topic: z.string().describe('A short subject, 2 to 5 words'),
+  /**
+   * A self-description in the creator's voice, as if they had typed it.
+   * This is what the normal pipeline builds from, so the speculative
+   * path needs no speculative code.
+   */
+  seed: z.string().describe('40 to 80 words, first person, as the creator would write it'),
+  /** Our inference, shown to the creator as an inference. */
+  because: z.string().describe('Why we thought of this, in one sentence'),
+  /** Verbatim from the source text. Verified in code, never trusted. */
+  quote: z.string().describe('A verbatim quote from the supplied text'),
+  audience: z.string().describe('Who would buy this'),
+});
+
+export const DirectionsSchema = z.object({
+  /**
+   * No `.min()`, deliberately. An empty array is a correct answer, and
+   * is what the thin case must produce: the grammar must never force an
+   * invention when there is nothing to build on.
+   */
+  directions: z.array(DirectionSchema).max(3),
+});
+
+export type Direction = z.infer<typeof DirectionSchema>;
+export type Directions = z.infer<typeof DirectionsSchema>;
 
 /** Stage 5 — Demand. Products come from what followers already ask for. */
 export const DemandSchema = z.object({

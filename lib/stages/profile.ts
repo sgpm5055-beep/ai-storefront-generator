@@ -21,6 +21,10 @@ Rules you must follow:
 - Never invent credentials, years of experience, client counts, qualifications or results. If the text does not say it, it is not true.
 - "Unknown" is a valid answer. A thin profile is a thin profile.
 - Set teachable to false for meme pages, brand accounts, reposters and personal diaries with nothing to teach.
+- has_substance and teachable are DIFFERENT questions. Answer them separately.
+  - has_substance = is there a real person here doing real work that an audience follows them for? A comedian, actor, musician, athlete, author or public figure all have substance even though they teach nothing. Set it true.
+  - has_substance = false ONLY for an empty, abandoned or purely derivative page: a reposter, a bot, a brand feed, or someone whose posts say nothing specific about anything.
+  - A creator can have substance and still not be teachable. That combination is normal and useful; do not collapse it into false.
 - Set stop_reason to a short sentence only when there is genuinely nothing to build a store from. Otherwise null. This is an internal diagnosis, not shown to the creator; say plainly what was missing.
 - Judge language from how they actually speak: en for English, hinglish for Hindi-English mixing, hi for mostly Hindi.
 - niche describes WHAT THE CREATOR DOES, not who follows them. A baker teaching women in small towns is food, not students. A fitness coach training exam aspirants is fitness, not exam_prep. Pick exam_prep or students only when the subject taught is studying itself.

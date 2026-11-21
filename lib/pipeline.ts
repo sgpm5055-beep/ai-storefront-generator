@@ -10,6 +10,7 @@ import { transcribeVideo, extractImageText } from './transcribe';
 import {
   rankPosts, buildExtracted, assessSignal, hasEnough,
   TARGET_POSTS, type ExtractedPost, TRANSCRIBE_BATCH } from './select';
+import { runDirectionsStage } from './stages/directions';
 import { runProfileStage, describeIsUsable } from './stages/profile';
 import { runDemandStage } from './stages/demand';
 import { runProductsStage, selectProducts } from './stages/products';
@@ -18,7 +19,7 @@ import { runCodeChecks, runJudge } from './stages/check';
 import { priceLadder, type LadderRole, type Format, type Scope } from './pricing';
 import { regulatedNicheFor } from './guardrails';
 import { NICHE_MULTIPLIERS } from './pricing';
-import { clampCopy, type Profile, type Demand, type Candidate, type Copy } from './schemas';
+import { clampCopy, type Profile, type Demand, type Candidate, type Copy, type Direction } from './schemas';
 
 export type StageName =
   | 'scrape_profile' | 'scrape_posts' | 'transcribe'
@@ -82,6 +83,18 @@ export interface BuildStop {
   found?: { name: string | null; avatarUrl: string | null; followers: number | null };
 }
 
+/**
+ * A substantive creator who teaches nothing directly: three speculative
+ * drafts instead of a dead end. Separate from BuildResult because these
+ * are guesses and must be labelled, stored and chosen between.
+ */
+export interface BuildDrafts {
+  ok: 'directions';
+  found: { name: string | null; avatarUrl: string | null; followers: number | null };
+  handle: string | null;
+  drafts: Array<{ direction: Direction; result: BuildResult }>;
+}
+
 export class PipelineStop extends Error {
   /**
    * `reason` is shown to the creator and must always say what to do next.
@@ -107,7 +120,7 @@ function pricingNiche(niche: string): string {
 export async function runPipeline(
   input: BuildInput,
   onProgress: OnProgress = () => {},
-): Promise<BuildResult | BuildStop> {
+): Promise<BuildResult | BuildStop | BuildDrafts> {
   try {
     return await execute(input, onProgress);
   } catch (err) {
@@ -123,7 +136,9 @@ export async function runPipeline(
   }
 }
 
-async function execute(input: BuildInput, progress: OnProgress): Promise<BuildResult> {
+async function execute(
+  input: BuildInput, progress: OnProgress,
+): Promise<BuildResult | BuildDrafts> {
   const isDescriptionPath = !input.handle;
 
   let handle: string | null = null;
@@ -214,6 +229,55 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
     followers,
   });
   if (!profile.teachable || profile.stop_reason) {
+    const stopCtx: BuildContext = {
+      extracted, isDescriptionPath, followers, bioText, displayName, avatarUrl, handle,
+    };
+    // On the description path the creator's own text is the only source:
+    // bioText and extracted are both empty there, so leaving it out made
+    // the whole branch unreachable for typed input.
+    const sourceForDirections = [
+      input.description ?? '', bioText, ...extracted.map((e) => e.text),
+    ].filter((t) => t.trim());
+
+    // A creator can be substantive and still teach nothing: a comedian, an
+    // actor, a public figure. That is a different state from an empty page,
+    // and it used to produce the same dead end. Offer directions instead.
+    //
+    // Strictly additive: any failure here falls through to the plain stop
+    // below, so this path can never break or slow a build beyond its own
+    // 20s timeout.
+    if (profile.has_substance && sourceForDirections.length > 0) {
+      try {
+        await progress({
+          stage: 'profile', status: 'running', detail: 'Looking for a different angle',
+        });
+        const directions = await runDirectionsStage({
+          profile, sourceText: sourceForDirections, followers,
+        });
+        if (directions.length >= 2) {
+          // The forks share the scrape; only stages 5 to 9 repeat, and they
+          // run together so three drafts cost one draft's latency.
+          const settled = await Promise.allSettled(directions.map((d) =>
+            buildFromProfile(profileFor(profile, d), stopCtx, d.seed, () => {})));
+          const drafts = settled.flatMap((r, i) =>
+            r.status === 'fulfilled' ? [{ direction: directions[i], result: r.value }] : []);
+          if (drafts.length >= 2) {
+            await progress({
+              stage: 'check', status: 'done', detail: `${drafts.length} directions`,
+            });
+            return {
+              ok: 'directions',
+              found: { name: displayName, avatarUrl, followers },
+              handle,
+              drafts,
+            };
+          }
+        }
+      } catch {
+        // Fall through to the plain stop.
+      }
+    }
+
     // The model's stop_reason is a diagnosis ("a personal diary page with no
     // expertise") and reads as a judgement of the person. The creator gets a
     // fixed, actionable sentence instead; the diagnosis stays in the logs.
@@ -229,10 +293,31 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
   }
   await progress({ stage: 'profile', status: 'done', detail: profile.niche.replace(/_/g, ' ') });
 
+  const ctx: BuildContext = {
+    extracted, isDescriptionPath, followers, bioText, displayName, avatarUrl, handle,
+  };
+  return buildFromProfile(profile, ctx, input.description ?? '', progress);
+}
+
+
+/**
+ * Stages 5 to 9: everything after the profile is known.
+ *
+ * Extracted verbatim so the directions path can run it once per
+ * direction without duplicating the pipeline. The successful path calls
+ * it exactly as before; a fork calls it with a synthesised profile and
+ * the direction's seed text. Nothing in here knows a fork exists.
+ */
+async function buildFromProfile(
+  profile: Profile,
+  ctx: BuildContext,
+  seedText: string,
+  progress: OnProgress,
+): Promise<BuildResult> {
   // Stage 5 — Demand.
-  await progress({ stage: 'demand', status: 'running', detail: 'Finding what your followers ask for' });
+  await progress({ stage: 'demand', status: 'running', detail: 'Finding what your ctx.followers ask for' });
   const demand: Demand = await runDemandStage(
-    profile, extracted.map((e) => e.text), isDescriptionPath,
+    profile, ctx.extracted.map((e) => e.text), ctx.isDescriptionPath,
   );
   await progress({ stage: 'demand', status: 'done', detail: `${demand.items.length} things they ask about` });
 
@@ -253,7 +338,7 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
   const priced = priceLadder(chosen.map((c) => ({
     format: c.format as Format,
     niche: pricingNiche(profile.niche),
-    followers,
+    followers: ctx.followers,
     scope: c.scope as Scope,
     role: c.ladder_slot as LadderRole,
   })));
@@ -264,11 +349,11 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
 
   // Stage 8 — Write.
   await progress({ stage: 'copy', status: 'running', detail: 'Writing in your voice' });
-  const styleExcerpts = extracted.filter((e) => !e.lowSignal).map((e) => e.text);
+  const styleExcerpts = ctx.extracted.filter((e) => !e.lowSignal).map((e) => e.text);
   const copy: Copy = clampCopy(await runCopyStage(
     profile,
     chosen.map((c, i) => ({ candidate: c, price: priced[i].price, role: c.ladder_slot })),
-    styleExcerpts.length ? styleExcerpts : [input.description ?? ''],
+    styleExcerpts.length ? styleExcerpts : [seedText],
   ));
   await progress({ stage: 'copy', status: 'done' });
 
@@ -300,9 +385,9 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
     }
   }
 
-  const sourceText = isDescriptionPath
-    ? (input.description ?? '')
-    : [bioText, ...extracted.map((e) => e.text)].filter(Boolean).join('\n\n');
+  const sourceText = ctx.isDescriptionPath
+    ? (seedText)
+    : [ctx.bioText, ...ctx.extracted.map((e) => e.text)].filter(Boolean).join('\n\n');
 
   await progress({ stage: 'check', status: 'done', detail: validation });
 
@@ -331,10 +416,10 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
 
   return {
     ok: true,
-    name: nameLooksReal ? nameGuess : displayName,
-    handle,
-    avatarUrl,
-    followers,
+    name: nameLooksReal ? nameGuess : ctx.displayName,
+    handle: ctx.handle,
+    avatarUrl: ctx.avatarUrl,
+    followers: ctx.followers,
     bio: finalCopy.bio,
     niche: profile.niche,
     language: profile.language,
@@ -342,6 +427,34 @@ async function execute(input: BuildInput, progress: OnProgress): Promise<BuildRe
     unusedCandidates: unused,
     validation,
     sourceText,
+  };
+}
+
+/** Everything stages 5 to 9 need from the scrape. */
+interface BuildContext {
+  extracted: ExtractedPost[];
+  isDescriptionPath: boolean;
+  followers: number | null;
+  bioText: string;
+  displayName: string;
+  avatarUrl: string | null;
+  handle: string | null;
+}
+
+/**
+ * The profile a fork builds from: the real creator's voice and language,
+ * but the direction's subject and audience. `teachable` is forced true —
+ * the creator has not said they teach this, which is exactly why every
+ * draft is stored as a guess and labelled as one.
+ */
+function profileFor(base: Profile, d: Direction): Profile {
+  return {
+    ...base,
+    skills: [d.topic],
+    audience: d.audience,
+    teachable: true,
+    stop_reason: null,
+    signal_strength: 'thin',
   };
 }
 

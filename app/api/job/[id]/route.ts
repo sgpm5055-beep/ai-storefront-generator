@@ -5,7 +5,7 @@
  * per-table replication enabled and fails silently if it is not, and a
  * build has exactly one viewer.
  */
-import { getStoreById, getJobs, getProducts } from '@/lib/store';
+import { getStoreById, getJobs, getProducts, getDrafts } from '@/lib/store';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -33,7 +33,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (store.status === 'failed') {
     body.error = failed?.error ?? 'We could not build this store.';
   }
-  if (store.status !== 'building') {
+  // A substantive creator who teaches nothing gets three drafts to pick
+  // between, not a store and not a dead end.
+  if (store.status === 'directions') {
+    const tokens = (store.direction as { drafts?: Array<{ slug: string; editToken: string }> } | null)?.drafts ?? [];
+    const drafts = await getDrafts(id);
+    body.drafts = drafts.map((d, i) => ({
+      slug: d.slug,
+      editToken: tokens[i]?.editToken ?? null,
+      topic: d.direction?.topic ?? '',
+      because: d.direction?.because ?? '',
+      quote: d.direction?.quote ?? '',
+      products: d.products.map((p) => ({
+        title: p.title, price: p.price, format: p.format,
+      })),
+    }));
+  } else if (store.status !== 'building') {
     body.products = (await getProducts(id)).length;
     body.slug = store.slug;
   }
