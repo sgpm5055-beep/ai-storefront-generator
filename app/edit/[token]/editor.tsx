@@ -103,7 +103,8 @@ export default function Editor(
         ))}
       </section>
 
-      <div className="sticky bottom-0 -mx-4 border-t border-line bg-paper/95 px-4 py-3 backdrop-blur">
+      <div className="sticky bottom-0 -mx-4 border-t border-line bg-paper/95 px-4 pt-3 backdrop-blur"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         {namePlaceholder ? (
           <>
             <p className="mb-2 text-center text-sm text-muted">
@@ -171,7 +172,7 @@ function ProductCard({
     <article className="card p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="chip">{FORMAT_LABEL[p.format] ?? p.format}</span>
-        <PriceChip product={p} onSave={onSave} />
+        <PriceChip product={p} onSave={onSave} onError={onError} />
       </div>
 
       <Editable
@@ -179,7 +180,8 @@ function ProductCard({
         onSave={(v) => onSave('title', v, p.id)}
       />
       <Editable
-        ariaLabel="What it promises" value={p.promise ?? ''} className="text-muted"
+        ariaLabel="What it promises" value={p.promise ?? ''} multiline rows={2}
+        className="text-muted"
         onSave={(v) => onSave('promise', v, p.id)}
       />
       <div className="mt-3">
@@ -202,12 +204,12 @@ function ProductCard({
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3">
         <button type="button" onClick={() => setWhy((w) => !w)}
           aria-expanded={why}
-          className="text-sm text-muted underline underline-offset-2 hover:text-ink">
+          className="min-h-[44px] py-2 text-sm text-muted underline underline-offset-2 hover:text-ink">
           Why this?
         </button>
         <button type="button" onClick={tryAnother} disabled={regenerating || capped}
-          className="text-sm text-muted underline underline-offset-2 hover:text-ink
-                     disabled:no-underline disabled:opacity-50">
+          className="min-h-[44px] py-2 text-sm text-muted underline underline-offset-2
+                     hover:text-ink disabled:no-underline disabled:opacity-50">
           {regenerating ? <Spinner label="Finding another…" /> : 'Try another'}
         </button>
       </div>
@@ -230,22 +232,33 @@ function ProductCard({
 
 /** Price is a number field, not free text, and shows its reason on tap. */
 function PriceChip({
-  product, onSave,
+  product, onSave, onError,
 }: {
   product: ProductRow;
   onSave: (f: string, v: string | number | string[], id?: string) => Promise<string | null>;
+  onError: (m: string | null) => void;
 }) {
   const [price, setPrice] = useState(product.price ?? 0);
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(String(product.price ?? 0));
 
   async function commit() {
     const n = Math.max(0, Math.round(Number(draft) || 0));
-    setEditing(false);
-    if (n === price) return;
+    if (n === price) { setEditing(false); return; }
+    // Await before closing: this used to revert the price silently when
+    // the save failed, with no message shown anywhere on the page.
+    setSaving(true);
     const err = await onSave('price', n, product.id);
-    if (!err) setPrice(n);
-    else setDraft(String(price));
+    setSaving(false);
+    setEditing(false);
+    if (err) {
+      setDraft(String(price));
+      onError(err);
+    } else {
+      setPrice(n);
+      onError(null);
+    }
   }
 
   if (editing) {
@@ -253,7 +266,8 @@ function PriceChip({
       <span className="inline-flex items-center gap-1 rounded-full border border-ink bg-card px-3 py-1">
         <span aria-hidden>₹</span>
         <input
-          autoFocus type="number" inputMode="numeric" min={0} value={draft}
+          autoFocus type="number" inputMode="numeric" min={0} max={100000} value={draft}
+          disabled={saving}
           aria-label="Price in rupees"
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
@@ -269,9 +283,6 @@ function PriceChip({
       className="chip font-medium text-ink hover:border-ink"
       title={product.price_reason ?? undefined}>
       {rupees(price)}
-      {product.suggested_price && product.suggested_price !== price && (
-        <span className="text-muted line-through">{rupees(product.suggested_price)}</span>
-      )}
     </button>
   );
 }

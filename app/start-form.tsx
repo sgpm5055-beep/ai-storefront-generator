@@ -18,9 +18,11 @@ const EXAMPLE =
   + 'everything I make works in a cooker or a kadai. I answer a lot of '
   + 'questions about why cakes sink.';
 
-export default function StartForm() {
+export default function StartForm(
+  { initialMode = 'handle' }: { initialMode?: 'handle' | 'describe' },
+) {
   const router = useRouter();
-  const [mode, setMode] = useState<'handle' | 'describe'>('handle');
+  const [mode, setMode] = useState<'handle' | 'describe'>(initialMode);
   const [handle, setHandle] = useState('');
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);

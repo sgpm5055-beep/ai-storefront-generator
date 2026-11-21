@@ -4,7 +4,10 @@ import { listSamples } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Home() {
+export default async function Home(
+  { searchParams }: { searchParams: Promise<{ mode?: string }> },
+) {
+  const { mode } = await searchParams;
   // Samples are a safety net: if every third-party service is down, these
   // still render, because they are plain rows in our own database.
   const samples = await listSamples().catch(() => []);
@@ -25,7 +28,7 @@ export default async function Home() {
         </p>
       </header>
 
-      <StartForm />
+      <StartForm initialMode={mode === 'describe' ? 'describe' : 'handle'} />
 
       {samples.length > 0 && (
         <section className="mt-12" aria-labelledby="samples">

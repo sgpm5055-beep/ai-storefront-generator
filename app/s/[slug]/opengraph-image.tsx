@@ -18,7 +18,17 @@ export default async function Image({ params }: { params: Promise<{ slug: string
   const name = store?.name ?? 'Storefront';
   // Cut on a word boundary: a hard slice leaves "kada" where the bio said
   // "kadai", which is the first thing anyone sees of this creator.
-  const raw = store?.bio ?? '';
+  // next/og loads no font covering Devanagari, so a Hindi or Hinglish bio
+  // renders as tofu boxes in every WhatsApp and Instagram preview. Drop
+  // the unrenderable runs rather than ship broken glyphs; if that leaves
+  // too little to read, show nothing and let the name carry the card.
+  // Stripping per-character turns "Gifting भी ना एक art है" into the
+  // nonsense "Gifting art , easy". Judge the whole string instead: if a
+  // meaningful share of it cannot render, drop the bio entirely and let
+  // the name carry the card.
+  const fullBio = (store?.bio ?? '').trim();
+  const unrenderable = (fullBio.match(/[^\p{Script=Latin}\p{Nd}\p{P}\p{Zs}₹]/gu) ?? []).length;
+  const raw = unrenderable / Math.max(fullBio.length, 1) > 0.05 ? '' : fullBio;
   const bio = raw.length <= 120
     ? raw
     : raw.slice(0, 120).replace(/\s+\S*$/, '') + '…';

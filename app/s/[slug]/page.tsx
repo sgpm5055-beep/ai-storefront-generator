@@ -55,8 +55,7 @@ export default async function StorePage({ params }: { params: Promise<{ slug: st
         {store.avatar_url && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={store.avatar_url} alt="" width={72} height={72}
-            className="mx-auto mb-3 h-18 w-18 rounded-full object-cover"
-            style={{ height: 72, width: 72 }} />
+            className="mx-auto mb-3 h-[72px] w-[72px] rounded-full object-cover" />
         )}
         <h1 className="text-2xl font-semibold">{store.name}</h1>
         {store.handle && (
@@ -78,7 +77,7 @@ export default async function StorePage({ params }: { params: Promise<{ slug: st
           const [bg, fg] = cover(p.title ?? String(p.position));
           return (
             <article key={p.id} className="card overflow-hidden">
-              <div className="flex h-28 items-end p-4" style={{ background: bg }}>
+              <div className="flex min-h-28 items-end p-4" style={{ background: bg }}>
                 <h2 className="text-lg font-semibold leading-snug" style={{ color: fg }}>
                   {p.title}
                 </h2>
@@ -116,7 +115,11 @@ export default async function StorePage({ params }: { params: Promise<{ slug: st
       </section>
 
       <footer className="mt-10 text-center text-xs text-muted">
-        <p>Not selling yet — this page is a preview of what&rsquo;s coming.</p>
+        {/* Only when nothing is actually buyable: this used to render even
+            beside a working "Get it" button, contradicting it. */}
+        {!products.some((p) => p.checkout_link) && (
+          <p>Opening soon &mdash; tap &ldquo;Notify me&rdquo; and you&rsquo;ll hear first.</p>
+        )}
         <p className="mt-2">
           <a href="/" className="underline underline-offset-2">Make one like this</a>
         </p>

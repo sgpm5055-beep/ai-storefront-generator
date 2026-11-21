@@ -21,6 +21,7 @@ export default function PublishFlow({
   const [published, setPublished] = useState(status === 'published');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<'error' | 'info'>('error');
 
   const url = slug ? `${baseUrl || (typeof window !== 'undefined' ? window.location.origin : '')}/s/${slug}` : '';
 
@@ -42,11 +43,19 @@ export default function PublishFlow({
   }
 
   async function checkCode() {
-    setBusy(true); setMessage(null);
-    const { data } = await post('check_code');
+    setBusy(true); setMessage(null); setMessageTone('error');
+    const { ok, data } = await post('check_code');
     setBusy(false);
-    if (data.found) { setConfirmed(true); setMessage(null); }
-    else setMessage(data.message ?? 'Not found yet.');
+    if (data.found) { setConfirmed(true); setMessage(null); return; }
+    // A 503 means WE could not read the bio. Rendering that identically
+    // to "code not found" sends the creator off to re-edit their
+    // Instagram bio to fix an outage on our side.
+    if (!ok) {
+      setMessageTone('info');
+      setMessage(data.message ?? 'We could not reach Instagram just now. Try again in a moment.');
+      return;
+    }
+    setMessage(data.message ?? "We couldn't find the code in your bio yet.");
   }
 
   async function publish() {
@@ -60,9 +69,15 @@ export default function PublishFlow({
   }
 
   async function unpublish() {
-    setBusy(true);
-    await post('unpublish');
+    if (!confirm('Take your page down? The link will stop working until you publish again.')) return;
+    setBusy(true); setMessage(null);
+    const { ok, data } = await post('unpublish');
     setBusy(false);
+    if (!ok) {
+      setMessageTone('error');
+      setMessage(data.error ?? 'We could not take it down. Try again.');
+      return;
+    }
     setPublished(false);
   }
 
@@ -127,7 +142,7 @@ export default function PublishFlow({
               {busy ? <Spinner /> : 'Get my code'}
             </button>
           )}
-          {message && <Notice>{message}</Notice>}
+          {message && <Notice tone={messageTone}>{message}</Notice>}
         </section>
       )}
 
@@ -143,7 +158,7 @@ export default function PublishFlow({
           <button type="button" onClick={publish} disabled={busy} className="btn-primary w-full">
             {busy ? <Spinner label="Publishing…" /> : 'Publish my storefront'}
           </button>
-          {message && <Notice>{message}</Notice>}
+          {message && <Notice tone={messageTone}>{message}</Notice>}
         </section>
       )}
     </div>

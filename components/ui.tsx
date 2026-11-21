@@ -43,11 +43,12 @@ export function Spinner({ label }: { label?: string }) {
  * rather than a global one, so two fields can save at once.
  */
 export function Editable({
-  value, onSave, multiline, className = '', ariaLabel, placeholder,
+  value, onSave, multiline, rows, className = '', ariaLabel, placeholder,
 }: {
   value: string;
   onSave: (v: string) => Promise<string | null>;   // returns an error message, or null
   multiline?: boolean;
+  rows?: number;
   className?: string;
   ariaLabel: string;
   placeholder?: string;
@@ -83,7 +84,7 @@ export function Editable({
         aria-label={ariaLabel}
         placeholder={placeholder}
         value={draft}
-        rows={multiline ? 4 : undefined}
+        rows={multiline ? (rows ?? 4) : undefined}
         onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
           setDraft(e.target.value)}
         onBlur={commit}
@@ -91,11 +92,13 @@ export function Editable({
           if (!multiline && e.key === 'Enter') (e.target as HTMLElement).blur();
           if (e.key === 'Escape') { setDraft(committed.current); (e.target as HTMLElement).blur(); }
         }}
-        className={`w-full resize-none rounded-lg border border-transparent bg-transparent
-          px-2 py-1 -mx-2 outline-none hover:border-line focus:border-ink
-          focus:bg-card focus:ring-2 focus:ring-ink/10 ${className}`}
+        className={`w-full resize-none rounded-lg border border-dashed border-line/70
+          bg-transparent px-2 py-1 -mx-2 outline-none hover:border-line
+          focus:border-solid focus:border-ink focus:bg-card focus:ring-2
+          focus:ring-ink/10 ${className}`}
       />
-      <span className="pointer-events-none absolute -top-5 right-0 text-xs text-muted">
+      <span aria-live="polite"
+        className="pointer-events-none absolute right-1 top-1 text-xs text-muted">
         {state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : ''}
       </span>
       {state === 'error' && message
