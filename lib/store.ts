@@ -185,9 +185,16 @@ export async function saveDrafts(
   // The tokens live on the parent row, which is itself only reachable by
   // its own unguessable build id. A child's token is never recoverable
   // from the child, so an unchosen draft stays unaddressable.
+  const first = drafts[0]?.result;
   await db().from('stores').update({
     status: 'directions',
     direction: { drafts: made },
+    // The parent row carries the identity so the chooser can greet them
+    // by name. Without it the screen says "We found you." to someone we
+    // demonstrably did find.
+    ...(first?.name ? { name: first.name } : {}),
+    ...(first?.avatarUrl ? { avatar_url: first.avatarUrl } : {}),
+    ...(first?.followers ? { followers: first.followers } : {}),
   }).eq('id', parentStoreId);
   await logEvent(parentStoreId, 'directions_offered', { count: drafts.length });
   return made;
