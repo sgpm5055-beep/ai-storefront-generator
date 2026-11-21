@@ -37,6 +37,16 @@ export async function runCopyStage(
   profile: Profile,
   priced: PricedCandidate[],
   styleExcerpts: string[],
+  /**
+   * What a previous attempt got wrong, when this is a rewrite.
+   *
+   * Optional and last so existing callers are unaffected. This replaces
+   * an older hack that appended the problems to `profile.register` —
+   * which the prompt presents as HOW THE CREATOR SPEAKS, so the
+   * instruction arrived disguised as a voice description and could make
+   * the voice worse while trying to fix something else.
+   */
+  revision?: string,
 ): Promise<Copy> {
   // The price is deliberately not shown here: when it was, the model
   // echoed it into the promise field.
@@ -65,6 +75,8 @@ export async function runCopyStage(
     'Write the storefront copy for these products:',
     '',
     productBlock,
+    // Last, so it is the most salient instruction in the prompt.
+    revision ? `\nThis is a rewrite. The previous attempt was rejected:\n${revision}` : '',
   ].filter(Boolean).join('\n');
 
   const r = await callStageWithRetry({

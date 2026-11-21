@@ -15,11 +15,13 @@ import { runProfileStage, describeIsUsable } from './stages/profile';
 import { runDemandStage } from './stages/demand';
 import { runProductsStage, selectProducts } from './stages/products';
 import { runCopyStage } from './stages/copy';
-import { runCodeChecks, runJudge } from './stages/check';
+import {
+  runCodeChecks, runJudge, judgePasses, judgeFeedback, attemptScore,
+} from './stages/check';
 import { priceLadder, type LadderRole, type Format, type Scope } from './pricing';
 import { regulatedNicheFor } from './guardrails';
 import { NICHE_MULTIPLIERS } from './pricing';
-import { clampCopy, type Profile, type Demand, type Candidate, type Copy, type Direction } from './schemas';
+import { clampCopy, type Profile, type Demand, type Candidate, type Copy, type Direction, type Judge } from './schemas';
 
 export type StageName =
   | 'scrape_profile' | 'scrape_posts' | 'transcribe'
@@ -69,6 +71,8 @@ export interface BuildResult {
   unusedCandidates: Candidate[];
   validation: 'pass' | 'repaired' | 'template';
   sourceText: string;
+  /** Quality scores for the shipped copy. Absent if the judge failed. */
+  judge?: Judge;
 }
 
 export interface BuildStop {
@@ -374,9 +378,10 @@ async function buildFromProfile(
     ].join('\n');
     try {
       finalCopy = clampCopy(await runCopyStage(
-        { ...profile, register: `${profile.register}. Fix these problems: ${problems}` },
+        profile,
         chosen.map((c, i) => ({ candidate: c, price: priced[i].price, role: c.ladder_slot })),
         styleExcerpts,
+        problems,
       ));
       const recheck = runCodeChecks(finalCopy, formats, regulated);
       if (!recheck.ok) validation = 'template';
@@ -388,6 +393,61 @@ async function buildFromProfile(
   const sourceText = ctx.isDescriptionPath
     ? (seedText)
     : [ctx.bioText, ...ctx.extracted.map((e) => e.text)].filter(Boolean).join('\n\n');
+
+  // Stage 9c — the quality gate.
+  //
+  // The deterministic checks above count characters and match regexes;
+  // neither can tell that "15 tested recipes" is a number the creator
+  // never gave. Measured on six builds of the same good input, roughly
+  // one in three shipped a fabricated detail. The judge catches those.
+  //
+  // Strictly additive: the whole block is wrapped so that a judge that
+  // times out, throttles or returns nonsense leaves the build exactly as
+  // it was. runJudge uses a bare callStage with no retry, and the
+  // directions path fires three of these at once, so this matters.
+  let judge: Judge | undefined;
+  try {
+    judge = await runJudge(finalCopy, sourceText);
+
+    if (!judgePasses(judge)) {
+      await progress({ stage: 'check', status: 'running', detail: 'Rewriting for accuracy' });
+      const first = { copy: finalCopy, judge, validation };
+
+      try {
+        const retryCopy = clampCopy(await runCopyStage(
+          profile,
+          chosen.map((c, i) => ({ candidate: c, price: priced[i].price, role: c.ladder_slot })),
+          styleExcerpts,
+          judgeFeedback(judge),
+        ));
+
+        // A retry that breaks structure is worse than a generic store: a
+        // 200-character bio renders broken, and products.length must stay
+        // aligned with the positional chosen[i] indexing below.
+        if (runCodeChecks(retryCopy, formats, regulated).ok) {
+          const retryJudge = await runJudge(retryCopy, sourceText);
+          // Ship the BEST attempt, not the last. Copy runs at temperature
+          // 0.6, so attempt 2 can be worse — a gate that sometimes lowers
+          // quality is not a gate.
+          if (attemptScore(retryJudge) > attemptScore(first.judge)) {
+            finalCopy = retryCopy;
+            judge = retryJudge;
+            validation = judgePasses(retryJudge) ? 'repaired' : 'template';
+          } else {
+            validation = judgePasses(first.judge) ? first.validation : 'template';
+          }
+        } else {
+          validation = 'template';
+        }
+      } catch {
+        // The rewrite failed; keep attempt 1 and flag it.
+        validation = 'template';
+      }
+    }
+  } catch {
+    // The judge is an improvement to the pipeline, never a dependency.
+    judge = undefined;
+  }
 
   await progress({ stage: 'check', status: 'done', detail: validation });
 
@@ -427,6 +487,7 @@ async function buildFromProfile(
     unusedCandidates: unused,
     validation,
     sourceText,
+    judge,
   };
 }
 

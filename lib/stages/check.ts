@@ -90,3 +90,97 @@ export async function runJudge(copy: Copy, sourceText: string): Promise<Judge> {
   });
   return r.data;
 }
+
+/**
+ * The quality gate. PRD §Rubric sets the bars; these are one point below
+ * the aggregate bars, deliberately.
+ *
+ * The PRD asks for specificity >= 4 on 80% of the golden set. That is an
+ * AGGREGATE bar: 20% scoring 3 is acceptable. Gating every individual
+ * store at 4 would assert 100% on a dimension set at 80%, and retry on
+ * roughly one store in five for a coin-flip improvement.
+ */
+export const GATE = {
+  /** Hard. A fabricated claim on a real person's public page. */
+  faithful: true,
+  /** Hard. A phrasing the deterministic regexes did not catch. */
+  policy_ok: true,
+  /** The swap test. Below 3 the store could belong to anyone. */
+  specificity: 3,
+  makeability: 3,
+  /** Loosest: the least calibrated dimension, and the most subjective. */
+  voice_match: 2,
+} as const;
+
+/**
+ * Per-dimension, never a composite average: a store with specificity 1
+ * and voice 5 averages 3 and would pass a mean-based gate, which is the
+ * exact failure the swap test exists to catch.
+ */
+export function judgePasses(j: Judge): boolean {
+  return j.faithful
+    && j.policy_ok
+    && j.specificity >= GATE.specificity
+    && j.makeability >= GATE.makeability
+    && j.voice_match >= GATE.voice_match;
+}
+
+/**
+ * Rank two attempts. Hard gates dominate, so a faithful store always
+ * beats an unfaithful one whatever its graded scores. Specificity is
+ * weighted above the rest because it is the product's stated claim.
+ */
+export function attemptScore(j: Judge): number {
+  return (j.faithful ? 1000 : 0)
+    + (j.policy_ok ? 1000 : 0)
+    + j.specificity * 10
+    + j.makeability * 2
+    + j.voice_match;
+}
+
+/**
+ * What the rewrite is told. Quoting the offending strings is what makes
+ * attempt 2 an improvement rather than a reroll: generic feedback
+ * ("be more specific") produces generic output.
+ */
+export function judgeFeedback(j: Judge): string {
+  const lines: string[] = [];
+
+  if (!j.faithful && j.unfaithful_claims.length) {
+    lines.push(
+      'These claims are NOT supported by the creator\'s own words. Remove them, '
+      + 'or replace them with something the source text actually says:',
+      ...j.unfaithful_claims.map((c) => `  - ${c}`),
+    );
+  }
+  if (!j.policy_ok && j.policy_problems.length) {
+    lines.push(
+      'These break the rules on promises and proof. Rewrite them as plain '
+      + 'description of what the buyer gets, with no promised outcome:',
+      ...j.policy_problems.map((p) => `  - ${p}`),
+    );
+  }
+  if (j.specificity < GATE.specificity) {
+    lines.push(
+      `Specificity scored ${j.specificity} of 5: this copy could sit unchanged on `
+      + 'any other creator in this niche. Rewrite so it could only belong to THIS '
+      + 'creator. Use the specific objects, places, words and problems that appear '
+      + 'in the style reference above, not the generic version of them.',
+    );
+  }
+  if (j.makeability < GATE.makeability) {
+    lines.push(
+      `Makeability scored ${j.makeability} of 5. Describe the cheapest product as `
+      + 'something this creator could put together in a weekend from material they '
+      + 'already have.',
+    );
+  }
+  if (j.voice_match < GATE.voice_match) {
+    lines.push(
+      `Voice scored ${j.voice_match} of 5: this reads like an advertisement rather `
+      + 'than like the creator. Match the sentence length, language mix and register '
+      + 'of the style reference.',
+    );
+  }
+  return lines.join('\n');
+}

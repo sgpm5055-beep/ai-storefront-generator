@@ -123,8 +123,18 @@ export async function saveResult(storeId: string, r: BuildResult): Promise<void>
   const { error: pErr } = await db().from('products').insert(rows);
   if (pErr) throw new Error(`could not save products: ${pErr.message}`);
 
+  // Judge scores ride on the existing event: events.props is jsonb, so
+  // quality becomes queryable over time with no migration.
   await logEvent(storeId, 'generation_completed', {
-    validation: r.validation, products: r.products.length,
+    validation: r.validation,
+    products: r.products.length,
+    ...(r.judge ? {
+      faithful: r.judge.faithful,
+      policy_ok: r.judge.policy_ok,
+      specificity: r.judge.specificity,
+      makeability: r.judge.makeability,
+      voice_match: r.judge.voice_match,
+    } : { judged: false }),
   });
 }
 

@@ -195,6 +195,31 @@ function runChecks(c: Case, result: Awaited<ReturnType<typeof runPipeline>>): Ch
     });
   }
 
+  // Quality scores. Reported, not gated: attaching a process.exit to a
+  // sampled LLM score on four cases invites lowering the threshold until
+  // the suite goes green, which is how eval suites become worthless.
+  // The two hard gates ARE asserted, on the SHIPPED store after any
+  // retry: a failure there means the gate itself did not work.
+  if (result.judge) {
+    const j = result.judge;
+    out.push({
+      ok: true,
+      label: 'judge',
+      detail: `spec ${j.specificity} · make ${j.makeability} · voice ${j.voice_match}`,
+    });
+    out.push({
+      ok: j.faithful,
+      label: 'every claim traces to the source',
+      detail: j.unfaithful_claims.length ? j.unfaithful_claims.join('; ').slice(0, 160) : undefined,
+    });
+    out.push({
+      ok: j.policy_ok,
+      label: 'no policy problems',
+      detail: j.policy_problems.length ? j.policy_problems.join('; ').slice(0, 160) : undefined,
+    });
+    specScores.push(j.specificity);
+  }
+
   // Pricing invariants hold for every built store, not just some cases.
   const prices = result.products.map((p) => p.price);
   out.push({
@@ -209,6 +234,9 @@ function runChecks(c: Case, result: Awaited<ReturnType<typeof runPipeline>>): Ch
   });
   return out;
 }
+
+/** Collected across cases for the PRD's aggregate bar. */
+const specScores: number[] = [];
 
 const only = process.argv[2];
 const files = readdirSync(join(here, 'cases')).filter((f) => f.endsWith('.json'));
@@ -252,6 +280,17 @@ for (const f of files) {
       }
     }
   }
+}
+
+if (specScores.length) {
+  // The PRD's bar is an aggregate, not per-store: specificity >= 4 on 80%
+  // of the set. The per-store gate sits one point lower by design.
+  const hits = specScores.filter((n) => n >= 4).length;
+  const pct = Math.round((hits / specScores.length) * 100);
+  console.log(
+    `\nspecificity >= 4 on ${hits}/${specScores.length} built cases (${pct}%) `
+    + `\x1b[2m— PRD bar: 80%\x1b[0m`,
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
