@@ -8,7 +8,7 @@
 import { after } from 'next/server';
 import { runPipeline, type ProgressEvent } from '@/lib/pipeline';
 import { normaliseHandle } from '@/lib/scrape';
-import { createBuild, recordStage, saveResult, markFailed, saveDrafts } from '@/lib/store';
+import { createBuild, recordStage, saveResult, markFailed, saveDrafts, saveIdentity } from '@/lib/store';
 import { checkRateLimit, logEvent } from '@/lib/db';
 import { describeIsUsable } from '@/lib/stages/profile';
 
@@ -62,6 +62,9 @@ export async function POST(req: Request) {
   after(async () => {
     const onProgress = async (e: ProgressEvent) => {
       await recordStage(storeId, e.stage, e.status, e.detail);
+      // Write identity the moment the scrape has it, so every later
+      // failure path inherits it rather than having to remember.
+      if (e.found) await saveIdentity(storeId, e.found);
     };
     try {
       await logEvent(storeId, 'generation_started');
@@ -78,7 +81,19 @@ export async function POST(req: Request) {
         await markFailed(storeId, result.reason, result.found);
       }
     } catch (err) {
-      await markFailed(storeId, (err as Error).message);
+      // An unexpected throw must not reach the creator as a raw exception
+      // message. Seen in testing: a transient upstream error produced an
+      // empty message, so the build screen fell back to the bare "We could
+      // not build this store." with no next step offered.
+      //
+      // Whatever the scrape already learned is still on the row, so the
+      // failure screen can keep greeting them by name.
+      console.error('[build] unexpected failure', storeId, err);
+      await markFailed(
+        storeId,
+        'Something went wrong on our side while building this. '
+        + 'Try again, or describe yourself in a few lines instead.',
+      );
     }
   });
 

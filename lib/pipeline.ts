@@ -31,6 +31,15 @@ export interface ProgressEvent {
   stage: StageName;
   status: 'running' | 'done' | 'failed' | 'skipped';
   detail?: string;
+  /**
+   * Carried on the scrape_profile 'done' event only. The caller persists
+   * it immediately so that EVERY later failure path, including an
+   * unexpected throw, can still greet the creator by name. Previously
+   * identity was written only on success or on a handled stop, and the
+   * paths that forgot to pass it showed "We couldn't finish this one" to
+   * someone the product had demonstrably found.
+   */
+  found?: { name: string | null; avatarUrl: string | null; followers: number | null };
 }
 export type OnProgress = (e: ProgressEvent) => void | Promise<void>;
 
@@ -176,6 +185,7 @@ async function execute(
     await progress({
       stage: 'scrape_profile', status: 'done',
       detail: `Found ${displayName}${followers ? ` · ${followers.toLocaleString('en-IN')} followers` : ''}`,
+      found: { name: displayName, avatarUrl, followers },
     });
 
     // Stage 1b — 30 recent posts. Slow (~75s), hence behind the progress screen.

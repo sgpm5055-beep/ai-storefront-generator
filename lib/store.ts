@@ -305,3 +305,30 @@ export async function listSamples(): Promise<
       Boolean(r.slug && r.name),
   );
 }
+
+/**
+ * Persist who we found, the moment the scrape finds them.
+ *
+ * Identity used to be written only on success or on a handled stop, so
+ * every new failure path had to remember to pass `found` — and three of
+ * them did not. Testing ten real handles kept surfacing the same symptom:
+ * a creator greeted as "Found you, Zomato" and then told "We could not
+ * build this store" by a product that had plainly found them.
+ *
+ * Writing it once here makes the failure screens correct by default
+ * instead of correct only when the throw site remembers.
+ */
+export async function saveIdentity(
+  storeId: string,
+  found: { name: string | null; avatarUrl: string | null; followers: number | null },
+): Promise<void> {
+  try {
+    await db().from('stores').update({
+      ...(found.name ? { name: found.name } : {}),
+      ...(found.avatarUrl ? { avatar_url: found.avatarUrl } : {}),
+      ...(found.followers ? { followers: found.followers } : {}),
+    }).eq('id', storeId);
+  } catch {
+    // Never fail a build over a cosmetic write.
+  }
+}
