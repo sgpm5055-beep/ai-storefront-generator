@@ -1,7 +1,11 @@
 node_modules/
 .next/
 out/
-build/
+# Anchored to the repo root. An unanchored `build/` also matched
+# app/build/, so the entire build-progress route — page.tsx and
+# progress.tsx — was silently excluded from the repo while the deployed
+# site kept working from the local directory.
+/build/
 .DS_Store
 *.pem
 npm-debug.log*
