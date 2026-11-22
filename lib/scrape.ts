@@ -9,8 +9,12 @@
  */
 import type { RawPost } from './select';
 
+import { activeToken, reportExhausted } from './apify-keys';
+
 const ACTOR = 'apify~instagram-scraper';
 const BASE = 'https://api.apify.com/v2/acts';
+
+const MAX_KEY_ATTEMPTS = 6;
 
 export type ScrapeFailure =
   | 'not_found' | 'private' | 'no_posts' | 'rate_limited' | 'upstream' | 'config';
@@ -45,29 +49,49 @@ export interface ScrapedProfile {
   isVerified: boolean;
 }
 
-function token(): string {
-  const t = process.env.APIFY_TOKEN;
-  if (!t) throw new ScrapeError('APIFY_TOKEN is not set', 'config');
-  return t;
-}
-
+/**
+ * Run the scraper, rotating keys as they run out.
+ *
+ * Apify's Free plan stops serving at $5/month with a 403. activeToken()
+ * retires a key before it gets there; this loop also handles the case
+ * where Apify's reported usage lags and a key 403s anyway, by retiring
+ * it and retrying on the next one. See lib/apify-keys.ts.
+ */
 async function runActor(input: unknown, timeoutMs: number): Promise<unknown[]> {
-  const url = `${BASE}/${ACTOR}/run-sync-get-dataset-items?token=${token()}`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    throw new ScrapeError(`scraper request failed: ${(err as Error).message}`, 'upstream');
+  // Bounded by the key count: each pass either succeeds, fails for a
+  // reason unrelated to quota, or retires exactly one key.
+  for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS; attempt++) {
+    const tok = await activeToken();
+    if (!tok) throw new ScrapeError('no Apify key with remaining quota', 'config');
+
+    const url = `${BASE}/${ACTOR}/run-sync-get-dataset-items?token=${tok}`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      throw new ScrapeError(`scraper request failed: ${(err as Error).message}`, 'upstream');
+    }
+
+    // 403 platform-feature-disabled means this key is spent. Retire it
+    // and retry on the next, rather than failing a build the remaining
+    // keys could have served.
+    if (res.status === 403 || res.status === 402) {
+      const another = reportExhausted(tok);
+      if (another) continue;
+      throw new ScrapeError('all Apify keys exhausted', 'config');
+    }
+
+    if (res.status === 429) throw new ScrapeError('scraper rate limited', 'rate_limited');
+    if (!res.ok) throw new ScrapeError(`scraper returned ${res.status}`, 'upstream');
+    const items = await res.json();
+    return Array.isArray(items) ? items : [];
   }
-  if (res.status === 429) throw new ScrapeError('scraper rate limited', 'rate_limited');
-  if (!res.ok) throw new ScrapeError(`scraper returned ${res.status}`, 'upstream');
-  const items = await res.json();
-  return Array.isArray(items) ? items : [];
+  throw new ScrapeError('all Apify keys exhausted', 'config');
 }
 
 /** Normalise a handle from "@name", "name" or a full profile link. PRD §FR1. */
