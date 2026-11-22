@@ -108,6 +108,39 @@ export interface BuildDrafts {
   drafts: Array<{ direction: Direction; result: BuildResult }>;
 }
 
+/**
+ * Whose name goes on the storefront.
+ *
+ * Instagram's own fullName is ground truth; the model's name_guess is
+ * inference from the bio, and it is wrong in a specific, damaging way.
+ * Seen on @ankurwarikoo, whose bio opens "Founder: WebVeda": the model
+ * guessed "WebVeda" and it replaced the verified "Ankur Warikoo", putting
+ * a company name on a real person's storefront.
+ *
+ * So the scraped name wins whenever we actually have one. The guess is a
+ * fallback for the description path, where nothing was scraped, and for a
+ * scrape that only echoed the handle back.
+ */
+export function chooseName(
+  nameGuess: string | null | undefined,
+  scraped: string,
+  handle: string | null,
+): string {
+  const scrapedName = scraped?.trim() ?? '';
+  // A scrape that merely echoes the handle tells us nothing extra.
+  const scrapedIsReal = handle
+    ? scrapedName.length > 0 && scrapedName.toLowerCase() !== handle.toLowerCase()
+    : false;
+  if (scrapedIsReal) return scrapedName;
+
+  // A model that cannot find a name sometimes returns a sentence about not
+  // finding one. Treat anything that is not name-shaped as absent.
+  const guess = nameGuess?.trim() ?? '';
+  const guessLooksReal = guess.length > 0 && guess.length <= 40
+    && !/\s(the|a|an|is|does|not)\s/i.test(guess);
+  return guessLooksReal ? guess : scrapedName;
+}
+
 export class PipelineStop extends Error {
   /**
    * `reason` is shown to the creator and must always say what to do next.
@@ -485,14 +518,9 @@ async function buildFromProfile(
     whyThis: p.why_this,
   }));
 
-  // A model that cannot find a name sometimes returns a sentence about not
-  // finding one. Treat anything that is not name-shaped as absent.
-  const nameGuess = profile.name_guess?.trim() ?? '';
-  const nameLooksReal = nameGuess.length > 0 && nameGuess.length <= 40 && !/\s(the|a|an|is|does|not)\s/i.test(nameGuess);
-
   return {
     ok: true,
-    name: nameLooksReal ? nameGuess : ctx.displayName,
+    name: chooseName(profile.name_guess, ctx.displayName, ctx.handle),
     handle: ctx.handle,
     avatarUrl: ctx.avatarUrl,
     followers: ctx.followers,
