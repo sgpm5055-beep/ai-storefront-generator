@@ -64,12 +64,16 @@ export function Wordmark() {
 
 /** 60px top bar. Left: wordmark. Right: whatever the mode needs. */
 export function TopBar(
-  { right, wide }: { right?: React.ReactNode; wide?: boolean },
+  { right, wide, beside }:
+  { right?: React.ReactNode; wide?: boolean; beside?: React.ReactNode },
 ) {
   return (
-    <header className={`${wide ? 'col-wide' : 'col'} flex h-[60px] items-center justify-between`}>
-      <Wordmark />
-      {right ? <div className="flex items-center gap-3">{right}</div> : null}
+    <header className={`${wide ? 'col-wide' : 'col'} flex h-[60px] items-center justify-between gap-3`}>
+      <div className="flex min-w-0 items-center gap-3">
+        <Wordmark />
+        {beside}
+      </div>
+      {right ? <div className="flex shrink-0 items-center gap-3">{right}</div> : null}
     </header>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import BuildProgress from './progress';
 import { TopBar, BarLink } from '@/components/storefront';
+import PipelineDrawer from '@/components/pipeline-drawer';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,11 @@ export default async function BuildPage(
 
   return (
     <>
-      <TopBar wide right={<BarLink href="/">Start over</BarLink>} />
+      <TopBar
+        wide
+        beside={t ? <PipelineDrawer token={t} /> : undefined}
+        right={<BarLink href="/">Start over</BarLink>}
+      />
       <main className="col pb-[190px] pt-2 lg:max-w-[760px]">
         <BuildProgress id={id} token={t ?? ''} />
       </main>

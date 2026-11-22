@@ -5,6 +5,7 @@ import { rupees } from '@/lib/format';
 import {
   TopBar, Avatar, coverFor, FORMAT_LABEL,
 } from '@/components/storefront';
+import PipelineDrawer from '@/components/pipeline-drawer';
 import Editor from './editor';
 import OwnerBar from './owner-bar';
 
@@ -27,7 +28,7 @@ export default async function EditPage(
   if (preview) {
     return (
       <>
-        <TopBar />
+        <TopBar beside={<PipelineDrawer token={token} />} />
         <main className="col pb-28 pt-2">
           <Avatar url={store.avatar_url} name={store.name} />
           <h1 className="mt-[18px] font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.03em]">
@@ -87,7 +88,7 @@ export default async function EditPage(
 
   return (
     <>
-      <TopBar />
+      <TopBar wide beside={<PipelineDrawer token={token} />} />
       <main className="col pb-[190px] pt-2 lg:max-w-[760px]">
         <Editor token={token} store={store} products={products} />
       </main>

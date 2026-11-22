@@ -339,3 +339,16 @@ export async function saveIdentity(
     // Never fail a build over a cosmetic write.
   }
 }
+
+/**
+ * Events for one build, newest last. Used by the pipeline trace to show
+ * real gate results rather than illustrative ones.
+ */
+export async function getEvents(
+  storeId: string,
+): Promise<{ name: string; props: Record<string, unknown>; created_at: string }[]> {
+  const { data } = await db().from('events')
+    .select('name,props,created_at')
+    .eq('store_id', storeId).order('created_at');
+  return (data as { name: string; props: Record<string, unknown>; created_at: string }[]) ?? [];
+}
