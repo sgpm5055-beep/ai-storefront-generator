@@ -13,3 +13,6 @@ next-env.d.ts
 /scratch/
 supabase/.temp/
 .env*
+
+# Personal prep notes, not part of the deliverable
+LOOM_SCRIPT.md
