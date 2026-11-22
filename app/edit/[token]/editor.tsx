@@ -89,7 +89,7 @@ export default function Editor(
               placeholder="Your name"
               singleLine
               className="editable w-full resize-none bg-transparent font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.03em] text-ink placeholder:text-placeholder"
-              onCommit={async (v) => { const e = await saveField('name', v); if (!e) setName(v); }}
+              onCommit={async (v) => { const e = await saveField('name', v); if (!e) setName(v); return !e; }}
             />
           </div>
 
@@ -104,9 +104,15 @@ export default function Editor(
               placeholder="A line about what you teach"
               maxLength={BIO_MAX}
               className="editable w-full resize-none bg-transparent text-[17px] leading-[1.5] text-muted placeholder:text-placeholder"
-              onCommit={async (v) => { const e = await saveField('bio', v); if (!e) setBio(v); }}
+              onCommit={async (v) => { const e = await saveField('bio', v); if (!e) setBio(v); return !e; }}
             />
-            <p className="mt-1 text-right text-xs text-faint">{bio.length} / {BIO_MAX}</p>
+            <p
+              className={`mt-1 text-right text-xs ${bio.length >= BIO_MAX ? 'text-accent' : 'text-faint'}`}
+              aria-live="polite"
+            >
+              {bio.length} / {BIO_MAX}
+              {bio.length >= BIO_MAX && ' — that’s the limit'}
+            </p>
           </div>
         </div>
 
@@ -169,7 +175,8 @@ function AutoGrow({
   value, onCommit, ariaLabel, placeholder, className, maxLength, singleLine, style,
 }: {
   value: string;
-  onCommit: (v: string) => Promise<void> | void;
+  /** Resolve false to reject the edit and put the old text back. */
+  onCommit: (v: string) => Promise<boolean | void> | boolean | void;
   ariaLabel: string;
   placeholder?: string;
   className?: string;
@@ -216,7 +223,15 @@ function AutoGrow({
       onKeyDown={(e) => {
         if (singleLine && e.key === 'Enter') { e.preventDefault(); (e.target as HTMLElement).blur(); }
       }}
-      onBlur={() => { if (draft !== value) void onCommit(draft.trim()); }}
+      onBlur={async () => {
+        const next = draft.trim();
+        if (next === value) return;
+        // Revert when the save is refused. Leaving the rejected text in
+        // place shows it as if it had saved, which is how a creator ends
+        // up believing a blocked claim is live on their page.
+        const okSave = await onCommit(next);
+        if (okSave === false) setDraft(value);
+      }}
     />
   );
 }
@@ -287,7 +302,7 @@ function ProductCard({
           singleLine
           className="editable w-full resize-none bg-transparent font-display text-[26px] font-semibold leading-[1.1] tracking-[-0.025em] outline-none"
           style={{ color: fg, borderColor: fg }}
-          onCommit={async (v) => { const e = await onSave('title', v, p.id); if (!e) setP({ ...p, title: v }); }}
+          onCommit={async (v) => { const e = await onSave('title', v, p.id); if (!e) setP({ ...p, title: v }); return !e; }}
         />
       </div>
 
@@ -299,7 +314,7 @@ function ProductCard({
           placeholder="What does the buyer get?"
           maxLength={PROMISE_MAX}
           className="editable w-full resize-none bg-transparent text-[17px] text-ink placeholder:text-placeholder"
-          onCommit={async (v) => { const e = await onSave('promise', v, p.id); if (!e) setP({ ...p, promise: v }); }}
+          onCommit={async (v) => { const e = await onSave('promise', v, p.id); if (!e) setP({ ...p, promise: v }); return !e; }}
         />
         <div className="mt-2">
           <AutoGrow
@@ -307,7 +322,7 @@ function ProductCard({
             value={p.description ?? ''}
             placeholder="Describe it in a few lines"
             className="editable w-full resize-none bg-transparent text-[15px] leading-[1.6] text-muted placeholder:text-placeholder"
-            onCommit={async (v) => { const e = await onSave('description', v, p.id); if (!e) setP({ ...p, description: v }); }}
+            onCommit={async (v) => { const e = await onSave('description', v, p.id); if (!e) setP({ ...p, description: v }); return !e; }}
           />
         </div>
 
