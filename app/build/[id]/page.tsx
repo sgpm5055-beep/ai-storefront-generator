@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import BuildProgress from './progress';
-import { Shell } from '@/components/ui';
+import { TopBar, BarLink } from '@/components/storefront';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +26,11 @@ export default async function BuildPage(
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   return (
-    <Shell>
-      <BuildProgress id={id} token={t ?? ''} />
-    </Shell>
+    <>
+      <TopBar wide right={<BarLink href="/">Start over</BarLink>} />
+      <main className="col pb-[190px] pt-2 lg:max-w-[760px]">
+        <BuildProgress id={id} token={t ?? ''} />
+      </main>
+    </>
   );
 }

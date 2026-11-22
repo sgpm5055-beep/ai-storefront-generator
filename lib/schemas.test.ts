@@ -65,3 +65,28 @@ describe('clampCopy: never show the creator a cut-off word', () => {
     expect(clampCopy(mk({ points: ['a', 'b', 'c', 'd', 'e'] })).products[0].points).toHaveLength(3);
   });
 });
+
+describe('clampCopy: dangling modifiers after a trim', () => {
+  it('does not end a promise on a determiner waiting for a noun', () => {
+    // Real output, seen on a live draft: the trim cut the noun and left
+    // "...without any special", which reads as a truncation bug to the
+    // creator even though nothing is broken.
+    const promise =
+      'Brew strong South Indian filter coffee at home every morning without any special equipment or expensive gear';
+    const out = clampCopy(mk({ promise })).products[0].promise;
+    expect(out.length).toBeLessThanOrEqual(90);
+    expect(out).not.toMatch(/\b(any|the|a|an|your|some|special|other|more|very)$/i);
+  });
+
+  it('strips several stacked dangling words, not just one', () => {
+    const promise =
+      'Learn to read a balance sheet before you invest in any single new company that you have not yet researched';
+    const out = clampCopy(mk({ promise })).products[0].promise;
+    expect(out).not.toMatch(/\b(in|any|single|new|that|the)$/i);
+  });
+
+  it('still keeps a promise that ends on a real word', () => {
+    const promise = 'Bake eggless cakes in your pressure cooker, no oven needed.';
+    expect(clampCopy(mk({ promise })).products[0].promise).toBe(promise);
+  });
+});

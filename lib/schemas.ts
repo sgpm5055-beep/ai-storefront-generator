@@ -169,10 +169,23 @@ function trimTo(text: string, max: number): string {
   const t = text.trim().replace(/\s+/g, ' ');
   if (t.length <= max) return t;
 
-  const clean = (x: string) =>
-    x.replace(/[\s,;:\u2014\u2013-]+$/, '')
-     .replace(/\s+(and|or|but|with|for|the|a|an|in|on|of|to|using|just|from|that|which|plus)$/i, '')
-     .replace(/[\s,;:]+$/, '');
+  // Trailing words that cannot end a sentence. Applied repeatedly,
+  // because a cut often leaves two of them stacked: "...without any
+  // special" (seen live) is a determiner plus an adjective both waiting
+  // on a noun that the trim removed.
+  const DANGLING =
+    /\s+(and|or|but|with|without|for|the|a|an|any|some|every|each|no|your|their|my|our|its|his|her|this|that|these|those|in|on|at|of|to|into|onto|from|by|as|using|just|which|who|plus|more|most|very|really|special|other|another|same|own|new|first|next|last|only|even|still|also)$/i;
+
+  const clean = (x: string) => {
+    let out = x.replace(/[\s,;:\u2014\u2013-]+$/, '');
+    // Bounded: each pass removes a word, so it cannot loop forever.
+    for (let i = 0; i < 4; i++) {
+      const next = out.replace(DANGLING, '').replace(/[\s,;:]+$/, '');
+      if (next === out) break;
+      out = next;
+    }
+    return out;
+  };
 
   // 1. A clause boundary (colon or dash) that leaves a usable head.
   //    "Name: Subtitle" keeps "Name", which reads as a finished title.

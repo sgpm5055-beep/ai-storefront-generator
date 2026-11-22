@@ -1,27 +1,41 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { Editable, Notice, Spinner, rupees } from '@/components/ui';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { rupees } from '@/lib/format';
+import { PRICE_POINTS } from '@/lib/pricing';
+import { coverFor, FORMAT_LABEL, Avatar, Spinner } from '@/components/storefront';
 import type { StoreRow, ProductRow } from '@/lib/store';
 
-const FORMAT_LABEL: Record<string, string> = {
-  digital: 'Download', webinar: 'Live workshop',
-  session: '1:1 session', course: 'Course',
-};
+const BIO_MAX = 150;
+const TITLE_MAX = 60;
+const PROMISE_MAX = 90;
 
+/**
+ * `edit` mode: the creator's own storefront, editable in place.
+ *
+ * There is no separate editor layout — the page they are editing is the
+ * page buyers will see, with dashed affordances on anything changeable.
+ */
 export default function Editor(
   { token, store, products: initial }:
   { token: string; store: StoreRow; products: ProductRow[] },
 ) {
+  const router = useRouter();
   const [products, setProducts] = useState(initial);
   const [bio, setBio] = useState(store.bio ?? '');
   const [name, setName] = useState(store.name ?? '');
   const [banner, setBanner] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   // The pipeline uses "Creator" when a description gives no name. Asking
   // beats guessing: this becomes the page title and the public URL.
-  const namePlaceholder = !name.trim() || name.trim().toLowerCase() === 'creator';
+  const nameMissing = !name.trim() || name.trim().toLowerCase() === 'creator';
+
+  function flashSaved() {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1600);
+  }
 
   async function saveField(
     field: string, value: string | number | string[], productId?: string,
@@ -31,112 +45,198 @@ export default function Editor(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ field, value, productId }),
     });
-    if (res.ok) return null;
+    if (res.ok) { setBanner(null); flashSaved(); return null; }
     const data = await res.json().catch(() => ({}));
-    return data.error ?? 'We could not save that. Try again.';
+    const msg = data.error ?? 'We could not save that. Try again.';
+    setBanner(msg);
+    return msg;
   }
 
   return (
-    <div className="grid gap-7">
-      <header>
-        <p className="text-sm text-muted">Draft — nothing is public yet</p>
-        <h1 className="mt-1 text-2xl font-semibold">Check it over, change anything.</h1>
-        <p className="mt-1 text-sm text-muted">
-          Tap any text to edit it. Changes save as you go.
-        </p>
-      </header>
+    <>
+      {/* Status + preview live in the top bar area of this column. */}
+      <div className="col -mt-[52px] mb-5 flex h-[36px] items-center justify-end gap-3">
+        <span className="text-sm text-muted" aria-live="polite">
+          {saved ? 'Saved' : 'Draft'}
+        </span>
+        <button
+          type="button"
+          onClick={() => router.push(`/edit/${token}?preview=1`)}
+          className="pill text-ink hover:bg-white"
+        >
+          Preview
+        </button>
+      </div>
 
       {store.validation_result === 'template' && (
-        <Notice tone="info">
-          We didn&rsquo;t find much to go on, so this is a starting point rather
+        <div role="status" className="notice-error mb-5">
+          We didn’t find much to go on, so this is a starting point rather
           than a read of your account. Worth rewriting in your own words.
-        </Notice>
+        </div>
       )}
 
-      {banner && <Notice>{banner}</Notice>}
+      {banner && <div role="alert" className="notice-error mb-5 animate-fade-up">{banner}</div>}
 
-      {/* Bio */}
-      <section className="card p-4">
-        <div className="mb-2 flex items-center gap-3">
-          {store.avatar_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={store.avatar_url} alt="" width={44} height={44}
-              className="h-11 w-11 rounded-full object-cover" />
-          )}
-          <div className="min-w-0 flex-1">
-            <Editable
+      {/* ---- store header ---- */}
+      <header className="lg:flex lg:gap-10">
+        <div className="lg:w-[480px] lg:flex-initial">
+          <Avatar url={store.avatar_url} name={name} />
+
+          <div className="mt-[18px]">
+            <AutoGrow
               ariaLabel="Your name"
-              value={namePlaceholder ? '' : name}
+              value={nameMissing ? '' : name}
               placeholder="Your name"
-              className="font-semibold"
-              onSave={async (v) => {
-                const e = await saveField('name', v);
-                if (!e) setName(v);
-                return e;
-              }}
+              singleLine
+              className="editable w-full resize-none bg-transparent font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.03em] text-ink placeholder:text-placeholder"
+              onCommit={async (v) => { const e = await saveField('name', v); if (!e) setName(v); }}
             />
-            {store.handle && <p className="px-2 -mx-2 text-sm text-muted">@{store.handle}</p>}
+          </div>
+
+          {store.handle && (
+            <p className="mt-1 text-[15px] text-muted">@{store.handle}</p>
+          )}
+
+          <div className="mt-[18px]">
+            <AutoGrow
+              ariaLabel="Your bio"
+              value={bio}
+              placeholder="A line about what you teach"
+              maxLength={BIO_MAX}
+              className="editable w-full resize-none bg-transparent text-[17px] leading-[1.5] text-muted placeholder:text-placeholder"
+              onCommit={async (v) => { const e = await saveField('bio', v); if (!e) setBio(v); }}
+            />
+            <p className="mt-1 text-right text-xs text-faint">{bio.length} / {BIO_MAX}</p>
           </div>
         </div>
-        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted">
-          Bio
-        </label>
-        <Editable
-          ariaLabel="Your bio" value={bio} multiline
-          onSave={async (v) => { const e = await saveField('bio', v); if (!e) setBio(v); return e; }}
-        />
-      </section>
 
-      {/* Products */}
-      <section className="grid gap-4">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-muted">
-          {products.length} things you could sell
-        </h2>
-        {products.map((p) => (
+        <aside className="mt-[26px] hidden border-t border-ink pt-2.5 text-[13px] leading-[1.5] text-muted lg:block lg:w-[240px] lg:flex-none">
+          This is the page buyers will see. Tap any text to change it.
+          Nothing is public until you publish.
+        </aside>
+      </header>
+
+      {/* ---- products ---- */}
+      <section className="mt-8 grid gap-3.5">
+        {products.map((p, i) => (
           <ProductCard
-            key={p.id} product={p} token={token}
+            key={p.id}
+            product={p}
+            position={i}
+            token={token}
+            canRemove={products.length > 2}
             onSave={saveField}
-            onReplace={(next) => setProducts((ps) =>
-              ps.map((x) => (x.id === next.id ? next : x)))}
+            onReplace={(next) => setProducts((cur) =>
+              cur.map((x) => (x.id === next.id ? next : x)))}
             onError={setBanner}
           />
         ))}
       </section>
 
-      <div className="sticky bottom-0 -mx-4 border-t border-line bg-paper/95 px-4 pt-3 backdrop-blur"
-        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-        {namePlaceholder ? (
-          <>
-            <p className="mb-2 text-center text-sm text-muted">
-              Add your name above — it becomes your page&rsquo;s title and link.
+      {/* ---- dock ---- */}
+      <div className="dock">
+        <div className="col-wide">
+          {nameMissing && (
+            <p className="mb-3 text-center text-sm text-muted">
+              Add your name at the top. It becomes your page’s title and link.
             </p>
-            <button type="button" disabled className="btn-primary w-full">
-              Looks good — publish it
-            </button>
-          </>
-        ) : (
-          <Link href={`/edit/${token}/publish`} className="btn-primary w-full">
-            Looks good — publish it
-          </Link>
-        )}
+          )}
+          <button
+            type="button"
+            disabled={nameMissing || !!banner}
+            onClick={() => router.push(`/edit/${token}/publish`)}
+            className={`btn-dock ${
+              nameMissing || banner
+                ? 'bg-line text-muted'
+                : 'bg-accent text-white hover:brightness-95'
+            }`}
+          >
+            Publish
+          </button>
+        </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+/**
+ * A textarea that grows with its content and commits on blur.
+ *
+ * Commit-on-blur with a revert on failure is the existing Editable
+ * behaviour and the reason an unsaved edit is never shown as saved.
+ */
+function AutoGrow({
+  value, onCommit, ariaLabel, placeholder, className, maxLength, singleLine, style,
+}: {
+  value: string;
+  onCommit: (v: string) => Promise<void> | void;
+  ariaLabel: string;
+  placeholder?: string;
+  className?: string;
+  maxLength?: number;
+  singleLine?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const grow = (el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
+  // Runs on mount as well as on edit: with rows={1} the field would
+  // otherwise paint one line tall and clip the text mid-word until the
+  // creator touched it.
+  useEffect(() => { if (ref.current) grow(ref.current); }, [draft]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    grow(el);
+    // Fonts load after first paint and change the wrap height.
+    document.fonts?.ready.then(() => grow(el)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      className={className}
+      style={style}
+      maxLength={maxLength}
+      value={draft}
+      onChange={(e) => {
+        const v = singleLine ? e.target.value.replace(/\n/g, '') : e.target.value;
+        setDraft(v);
+      }}
+      onKeyDown={(e) => {
+        if (singleLine && e.key === 'Enter') { e.preventDefault(); (e.target as HTMLElement).blur(); }
+      }}
+      onBlur={() => { if (draft !== value) void onCommit(draft.trim()); }}
+    />
   );
 }
 
 function ProductCard({
-  product, token, onSave, onReplace, onError,
+  product, position, token, canRemove, onSave, onReplace, onError,
 }: {
   product: ProductRow;
+  position: number;
   token: string;
+  canRemove: boolean;
   onSave: (f: string, v: string | number | string[], id?: string) => Promise<string | null>;
   onReplace: (p: ProductRow) => void;
   onError: (m: string | null) => void;
 }) {
   const [p, setP] = useState(product);
-  const [why, setWhy] = useState(false);
+  const [panel, setPanel] = useState<'why' | 'link' | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [capped, setCapped] = useState(false);
+  const [bg, fg] = coverFor(position);
 
   async function tryAnother() {
     setRegenerating(true);
@@ -169,120 +269,213 @@ function ProductCard({
   }
 
   return (
-    <article className="card p-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="chip">{FORMAT_LABEL[p.format] ?? p.format}</span>
-        <PriceChip product={p} onSave={onSave} onError={onError} />
-      </div>
-
-      <Editable
-        ariaLabel="Product title" value={p.title ?? ''} className="text-lg font-semibold"
-        onSave={(v) => onSave('title', v, p.id)}
-      />
-      <Editable
-        ariaLabel="What it promises" value={p.promise ?? ''} multiline rows={2}
-        className="text-muted"
-        onSave={(v) => onSave('promise', v, p.id)}
-      />
-      <div className="mt-3">
-        <Editable
-          ariaLabel="Description" value={p.description ?? ''} multiline className="text-sm"
-          onSave={(v) => onSave('description', v, p.id)}
+    <article
+      className={`overflow-hidden rounded-card border border-line bg-card transition ${
+        regenerating ? 'pointer-events-none opacity-45' : ''
+      }`}
+    >
+      {/* Cover */}
+      <div className="grid gap-[22px] p-[18px]" style={{ background: bg }}>
+        <span className="label-caps" style={{ color: fg }}>
+          {FORMAT_LABEL[p.format] ?? p.format}
+        </span>
+        <AutoGrow
+          ariaLabel="Product title"
+          value={p.title ?? ''}
+          placeholder="Name this product"
+          maxLength={TITLE_MAX}
+          singleLine
+          className="editable w-full resize-none bg-transparent font-display text-[26px] font-semibold leading-[1.1] tracking-[-0.025em] outline-none"
+          style={{ color: fg, borderColor: fg }}
+          onCommit={async (v) => { const e = await onSave('title', v, p.id); if (!e) setP({ ...p, title: v }); }}
         />
       </div>
 
-      {p.points && p.points.length > 0 && (
-        <ul className="mt-3 grid gap-1 text-sm text-muted">
-          {p.points.map((pt, i) => (
-            <li key={i} className="flex gap-2">
-              <span aria-hidden className="text-line">—</span>{pt}
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Body */}
+      <div className="p-[18px] pt-4">
+        <AutoGrow
+          ariaLabel="What it promises"
+          value={p.promise ?? ''}
+          placeholder="What does the buyer get?"
+          maxLength={PROMISE_MAX}
+          className="editable w-full resize-none bg-transparent text-[17px] text-ink placeholder:text-placeholder"
+          onCommit={async (v) => { const e = await onSave('promise', v, p.id); if (!e) setP({ ...p, promise: v }); }}
+        />
+        <div className="mt-2">
+          <AutoGrow
+            ariaLabel="Description"
+            value={p.description ?? ''}
+            placeholder="Describe it in a few lines"
+            className="editable w-full resize-none bg-transparent text-[15px] leading-[1.6] text-muted placeholder:text-placeholder"
+            onCommit={async (v) => { const e = await onSave('description', v, p.id); if (!e) setP({ ...p, description: v }); }}
+          />
+        </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3">
-        <button type="button" onClick={() => setWhy((w) => !w)}
-          aria-expanded={why}
-          className="min-h-[44px] py-2 text-sm text-muted underline underline-offset-2 hover:text-ink">
-          Why this?
-        </button>
-        <button type="button" onClick={tryAnother} disabled={regenerating || capped}
-          className="min-h-[44px] py-2 text-sm text-muted underline underline-offset-2
-                     hover:text-ink disabled:no-underline disabled:opacity-50">
-          {regenerating ? <Spinner label="Finding another…" /> : 'Try another'}
-        </button>
+        {p.points && p.points.length > 0 && (
+          <ul className="mt-3 grid gap-1.5 text-[15px]">
+            {p.points.map((pt, i) => (
+              <li key={i} className="flex gap-2">
+                <span aria-hidden className="text-ghost-line">—</span>{pt}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      {why && (
-        <div className="mt-3 rounded-xl bg-paper p-3 text-sm text-muted">
-          {p.demand_item && <p><strong className="text-ink">They ask you:</strong> {p.demand_item}</p>}
-          {p.evidence && <p className="mt-2 italic">&ldquo;{p.evidence}&rdquo;</p>}
-          {p.price_reason && (
-            <p className="mt-2"><strong className="text-ink">Price:</strong> {p.price_reason}</p>
+      <PriceStrip product={p} onSave={onSave} onError={onError}
+        onPrice={(n) => setP({ ...p, price: n })} />
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 border-t border-line px-[18px] py-0.5">
+        <TrayButton onClick={() => setPanel(panel === 'why' ? null : 'why')}
+          expanded={panel === 'why'}>
+          Why this?
+        </TrayButton>
+        <TrayButton onClick={tryAnother} disabled={regenerating || capped} hidden={capped}>
+          {regenerating ? <><Spinner /> Finding another…</> : 'Try another'}
+        </TrayButton>
+        <span className="flex-1" />
+        <TrayButton onClick={() => setPanel(panel === 'link' ? null : 'link')}
+          expanded={panel === 'link'}
+          className={p.checkout_link ? 'text-success' : undefined}>
+          {p.checkout_link ? '✓ Payment link added' : '+ Payment link'}
+        </TrayButton>
+      </div>
+
+      {panel === 'why' && (
+        <div className="animate-fade-up border-t border-line px-[18px] pb-[18px] pt-3.5 text-[15px]">
+          {p.demand_item
+            ? <p><strong>They ask you:</strong> {p.demand_item}</p>
+            : <p className="text-muted">Drawn from what you told us about your work.</p>}
+          {p.evidence && (
+            <blockquote className="mt-2 border-l-2 border-accent pl-3 italic text-muted">
+              {p.evidence}
+            </blockquote>
           )}
-          {!p.demand_item && !p.evidence && (
-            <p>Drawn from what you told us about your work.</p>
-          )}
+        </div>
+      )}
+
+      {panel === 'link' && (
+        <div className="animate-fade-up border-t border-line px-[18px] pb-[18px] pt-3.5">
+          <p className="text-[15px] text-muted">
+            Paste a UPI or checkout link and buyers can pay today. Leave it
+            empty and they see “Notify me”.
+          </p>
+          <input
+            type="url"
+            defaultValue={p.checkout_link ?? ''}
+            aria-label="Payment or checkout link"
+            placeholder="https://"
+            className="mt-3 w-full rounded-xl border border-line bg-white px-3 text-base outline-none focus:border-ink"
+            style={{ minHeight: 48 }}
+            onBlur={async (e) => {
+              const v = e.target.value.trim();
+              if (v === (p.checkout_link ?? '')) return;
+              const err = await onSave('checkout_link', v, p.id);
+              if (!err) setP({ ...p, checkout_link: v || null });
+            }}
+          />
         </div>
       )}
     </article>
   );
 }
 
-/** Price is a number field, not free text, and shows its reason on tap. */
-function PriceChip({
-  product, onSave, onError,
+function TrayButton({
+  children, onClick, disabled, expanded, hidden, className,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  expanded?: boolean;
+  hidden?: boolean;
+  className?: string;
+}) {
+  if (hidden) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-expanded={expanded}
+      className={`inline-flex items-center gap-2 px-1 text-sm text-muted transition hover:text-ink disabled:opacity-50 ${className ?? ''}`}
+      style={{ minHeight: 44 }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Price is a number field with step buttons along the real price ladder,
+ * plus the reason it was chosen. Hints never block a creator's own price.
+ */
+function PriceStrip({
+  product, onSave, onError, onPrice,
 }: {
   product: ProductRow;
   onSave: (f: string, v: string | number | string[], id?: string) => Promise<string | null>;
   onError: (m: string | null) => void;
+  onPrice: (n: number) => void;
 }) {
+  const suggested = product.suggested_price ?? product.price ?? 0;
   const [price, setPrice] = useState(product.price ?? 0);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(String(product.price ?? 0));
 
-  async function commit() {
-    const n = Math.max(0, Math.round(Number(draft) || 0));
-    if (n === price) { setEditing(false); return; }
-    // Await before closing: this used to revert the price silently when
+  async function commit(n: number) {
+    const clean = Math.max(0, Math.min(100000, Math.round(n || 0)));
+    if (clean === price) { setDraft(String(price)); return; }
+    // Await before settling: this used to revert the price silently when
     // the save failed, with no message shown anywhere on the page.
-    setSaving(true);
-    const err = await onSave('price', n, product.id);
-    setSaving(false);
-    setEditing(false);
-    if (err) {
-      setDraft(String(price));
-      onError(err);
-    } else {
-      setPrice(n);
-      onError(null);
-    }
+    const err = await onSave('price', clean, product.id);
+    if (err) { setDraft(String(price)); onError(err); return; }
+    setPrice(clean);
+    setDraft(String(clean));
+    onPrice(clean);
   }
 
-  if (editing) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-ink bg-card px-3 py-1">
-        <span aria-hidden>₹</span>
-        <input
-          autoFocus type="number" inputMode="numeric" min={0} max={100000} value={draft}
-          disabled={saving}
-          aria-label="Price in rupees"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLElement).blur(); }}
-          className="w-20 bg-transparent outline-none"
-        />
-      </span>
-    );
-  }
+  const step = (dir: 1 | -1) => {
+    const idx = PRICE_POINTS.findIndex((v) => v >= price);
+    const at = idx === -1 ? PRICE_POINTS.length - 1 : idx;
+    const next = PRICE_POINTS[Math.max(0, Math.min(PRICE_POINTS.length - 1, at + dir))];
+    void commit(next);
+  };
+
+  const changed = price !== suggested;
 
   return (
-    <button type="button" onClick={() => { setDraft(String(price)); setEditing(true); }}
-      className="chip font-medium text-ink hover:border-ink"
-      title={product.price_reason ?? undefined}>
-      {rupees(price)}
-    </button>
+    <div className="flex flex-wrap items-center gap-3 border-t border-line bg-paper px-[18px] py-3.5">
+      <button type="button" onClick={() => step(-1)} aria-label="Lower the price"
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-white text-lg transition hover:border-ink">
+        −
+      </button>
+      <span className="inline-flex items-center font-display text-[26px] font-bold">
+        <span aria-hidden>₹</span>
+        <input
+          value={draft}
+          inputMode="numeric"
+          aria-label="Price in rupees"
+          onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, ''))}
+          onBlur={() => void commit(Number(draft))}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLElement).blur(); }}
+          className="tnum w-[92px] bg-transparent font-display text-[26px] font-bold outline-none"
+        />
+      </span>
+      <button type="button" onClick={() => step(1)} aria-label="Raise the price"
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-white text-lg transition hover:border-ink">
+        +
+      </button>
+      <p className="w-full text-[13px] leading-[1.45] text-muted">
+        {changed ? (
+          <>
+            Your price. We suggested {rupees(suggested)}.{' '}
+            <button type="button" onClick={() => void commit(suggested)}
+              className="underline underline-offset-2 hover:text-ink">
+              Reset
+            </button>
+          </>
+        ) : (product.price_reason ?? '')}
+      </p>
+    </div>
   );
 }

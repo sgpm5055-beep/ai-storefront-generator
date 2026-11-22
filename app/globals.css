@@ -19,6 +19,51 @@ html, body {
 input, textarea, select { font-size: 16px; }
 
 @layer components {
+  /* ---- Design-handoff primitives -------------------------------- */
+
+  /* The page column. Every mode uses the same skeleton so moving
+     / -> /build/[id] -> /edit/[token] feels like no navigation. */
+  .col { @apply mx-auto w-full max-w-[480px] px-5; }
+  /* In the two-column modes the content sits in the left 480px of a
+     760px container, so chrome aligned to the page centre would drift
+     away from the thing it belongs to. */
+  .col-wide { @apply mx-auto w-full max-w-[760px] px-5; }
+  /* Dock contents track the content column, not the full width. */
+  .dock .col-wide > * { @apply max-w-[480px]; }
+
+  /* Small-caps label: formats, field labels. */
+  .label-caps {
+    @apply text-[13px] font-medium uppercase tracking-[.08em];
+  }
+
+  /* Dashed affordance for anything editable in place. */
+  .editable {
+    @apply -mx-2 rounded-[10px] border border-dashed border-ghost-line px-2
+           py-0.5 outline-none transition
+           focus:border-solid focus:border-ink focus:bg-white;
+  }
+
+  .ghost-bar { @apply rounded-md bg-ghost-fill; }
+
+  .notice-error {
+    @apply rounded-xl border bg-accent-soft px-4 py-3.5 text-[15px] text-ink;
+    border-color: rgba(194, 65, 12, .3);
+  }
+
+  .pill {
+    @apply inline-flex items-center justify-center rounded-full border
+           border-ink px-4 text-sm font-medium transition;
+    min-height: 36px;
+  }
+
+  /* 58px primary, per the handoff's dock spec. */
+  .btn-dock {
+    @apply flex w-full items-center justify-center gap-2 rounded-full
+           text-base font-medium transition active:scale-[.99]
+           disabled:pointer-events-none;
+    min-height: 58px;
+  }
+
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3
            text-base font-medium transition active:scale-[0.99]
@@ -44,3 +89,21 @@ input, textarea, select { font-size: 16px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Display face for headings, prices and the wordmark. */
+.font-display { font-family: var(--font-display), var(--font-deva), ui-sans-serif, system-ui, sans-serif; }
+
+/* The fixed bottom dock fades the page out behind it rather than
+   cutting it off with a hard edge. */
+.dock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, #FBF9F5 28px);
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding-top: 28px;
+}
+
+/* Tabular figures so prices do not jitter while being edited. */
+.tnum { font-variant-numeric: tabular-nums; }

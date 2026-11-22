@@ -2,25 +2,12 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getStoreBySlug, getProducts } from '@/lib/store';
 import { rupees } from '@/lib/format';
+import {
+  TopBar, BarLink, Avatar, coverFor, FORMAT_LABEL,
+} from '@/components/storefront';
 import Interest from './interest';
 
 export const dynamic = 'force-dynamic';
-
-const FORMAT_LABEL: Record<string, string> = {
-  digital: 'Download', webinar: 'Live workshop',
-  session: '1:1 session', course: 'Course',
-};
-
-/** Deterministic cover colour from the title: no image generation needed. */
-function cover(seed: string) {
-  const palette = [
-    ['#FFF1E8', '#C2410C'], ['#EEF4FF', '#1D4ED8'], ['#F0FAF2', '#15803D'],
-    ['#FBF0FA', '#A21CAF'], ['#FFF8E6', '#A16207'],
-  ];
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
-  return palette[h % palette.length];
-}
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> },
@@ -48,82 +35,101 @@ export default async function StorePage({ params }: { params: Promise<{ slug: st
   if (!store || store.status !== 'published') notFound();
 
   const products = await getProducts(store.id);
+  const anyCheckout = products.some((p) => p.checkout_link);
 
   return (
-    <main className="mx-auto w-full max-w-[560px] px-4 pb-20 pt-10">
-      <header className="mb-8 text-center">
-        {store.avatar_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={store.avatar_url} alt="" width={72} height={72}
-            className="mx-auto mb-3 h-[72px] w-[72px] rounded-full object-cover" />
-        )}
-        <h1 className="text-2xl font-semibold">{store.name}</h1>
-        {store.handle && (
-          <a href={`https://instagram.com/${store.handle}`}
-            target="_blank" rel="noopener noreferrer"
-            className="mt-1 inline-block text-sm text-muted underline underline-offset-2">
-            @{store.handle}
-          </a>
-        )}
-        {store.bio && (
-          <p className="mx-auto mt-3 max-w-[42ch] text-[15px] leading-relaxed text-muted">
-            {store.bio}
-          </p>
-        )}
-      </header>
+    <>
+      <TopBar right={<BarLink href="/">Make your own</BarLink>} />
 
-      <section className="grid gap-4">
-        {products.map((p) => {
-          const [bg, fg] = cover(p.title ?? String(p.position));
-          return (
-            <article key={p.id} className="card overflow-hidden">
-              <div className="flex min-h-28 items-end p-4" style={{ background: bg }}>
-                <h2 className="text-lg font-semibold leading-snug" style={{ color: fg }}>
-                  {p.title}
-                </h2>
-              </div>
-              <div className="p-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="chip">{FORMAT_LABEL[p.format] ?? p.format}</span>
-                  <span className="text-lg font-semibold">{rupees(p.price ?? 0)}</span>
+      <main className="col pb-24 pt-2">
+        <header>
+          <Avatar url={store.avatar_url} name={store.name} />
+
+          <h1 className="mt-[18px] font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.03em]">
+            {store.name}
+          </h1>
+
+          {store.handle && (
+            <a
+              href={`https://instagram.com/${store.handle}`}
+              target="_blank" rel="noopener noreferrer"
+              className="mt-1 inline-block text-[15px] text-muted underline underline-offset-[3px]"
+            >
+              @{store.handle}
+            </a>
+          )}
+
+          {store.bio && (
+            <p className="mt-[18px] text-[17px] leading-[1.5] text-muted">{store.bio}</p>
+          )}
+        </header>
+
+        <section className="mt-8 grid gap-3.5">
+          {products.map((p, i) => {
+            const [bg, fg] = coverFor(p.position ?? i);
+            return (
+              <article
+                key={p.id}
+                className="overflow-hidden rounded-card border border-line bg-card"
+              >
+                <div className="grid gap-[22px] p-[18px]" style={{ background: bg }}>
+                  <span className="label-caps" style={{ color: fg }}>
+                    {FORMAT_LABEL[p.format] ?? p.format}
+                  </span>
+                  <h2
+                    className="font-display text-[26px] font-semibold leading-[1.1] tracking-[-0.025em]"
+                    style={{ color: fg, textWrap: 'balance' }}
+                  >
+                    {p.title}
+                  </h2>
                 </div>
-                {p.promise && <p className="text-muted">{p.promise}</p>}
-                {p.description && (
-                  <p className="mt-2 text-sm leading-relaxed text-muted">{p.description}</p>
-                )}
-                {p.points && p.points.length > 0 && (
-                  <ul className="mt-3 grid gap-1.5 text-sm">
-                    {p.points.map((pt, i) => (
-                      <li key={i} className="flex gap-2">
-                        <span aria-hidden className="text-line">—</span>{pt}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-4">
-                  {p.checkout_link ? (
-                    <a href={p.checkout_link} target="_blank" rel="noopener noreferrer"
-                      className="btn-primary w-full">Get it — {rupees(p.price ?? 0)}</a>
-                  ) : (
-                    <Interest storeId={store.id} productId={p.id} />
+
+                <div className="p-[18px] pt-4">
+                  {p.promise && <p className="text-[17px] text-ink">{p.promise}</p>}
+                  {p.description && (
+                    <p className="mt-2 text-[15px] leading-[1.6] text-muted">{p.description}</p>
                   )}
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </section>
 
-      <footer className="mt-10 text-center text-xs text-muted">
+                  {p.points && p.points.length > 0 && (
+                    <ul className="mt-3 grid gap-1.5 text-[15px]">
+                      {p.points.map((pt, j) => (
+                        <li key={j} className="flex gap-2">
+                          <span aria-hidden className="text-ghost-line">—</span>{pt}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <div className="mt-5 flex items-center gap-3.5">
+                    <span className="tnum font-display text-[28px] font-bold">
+                      {rupees(p.price ?? 0)}
+                    </span>
+                    {p.checkout_link ? (
+                      <a
+                        href={p.checkout_link} target="_blank" rel="noopener noreferrer"
+                        className="flex flex-1 items-center justify-center rounded-full bg-ink text-base font-medium text-white transition hover:bg-black active:scale-[.99]"
+                        style={{ minHeight: 52 }}
+                      >
+                        Get it
+                      </a>
+                    ) : (
+                      <Interest storeId={store.id} productId={p.id} />
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+
         {/* Only when nothing is actually buyable: this used to render even
             beside a working "Get it" button, contradicting it. */}
-        {!products.some((p) => p.checkout_link) && (
-          <p>Opening soon &mdash; tap &ldquo;Notify me&rdquo; and you&rsquo;ll hear first.</p>
+        {!anyCheckout && (
+          <p className="mt-10 text-center text-[13px] text-muted">
+            Opening soon. Tap “Notify me” and you’ll hear first.
+          </p>
         )}
-        <p className="mt-2">
-          <a href="/" className="underline underline-offset-2">Make one like this</a>
-        </p>
-      </footer>
-    </main>
+      </main>
+    </>
   );
 }

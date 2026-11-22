@@ -11,7 +11,12 @@ export default function Interest({ storeId, productId }: { storeId: string; prod
   return (
     <button
       type="button"
-      className="btn-secondary w-full"
+      className={`flex-1 rounded-full border text-base font-medium transition ${
+        done
+          ? 'border-line bg-paper text-muted'
+          : 'border-ink bg-white text-ink hover:bg-paper active:scale-[.99]'
+      }`}
+      style={{ minHeight: 52 }}
       disabled={done}
       onClick={async () => {
         setDone(true);
@@ -24,7 +29,7 @@ export default function Interest({ storeId, productId }: { storeId: string; prod
         } catch { /* interest is best-effort; never block the page on it */ }
       }}
     >
-      {done ? 'We’ll let them know' : 'Notify me when this opens'}
+      {done ? '✓ We’ll let you know' : 'Notify me'}
     </button>
   );
 }

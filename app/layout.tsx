@@ -1,12 +1,32 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Bricolage_Grotesque, Geist, Noto_Sans_Devanagari } from 'next/font/google';
 import './globals.css';
 
-// Devanagari subset included: creators write in Hindi and Hinglish, and
-// the bio is often mixed script.
-const sans = Inter({
+// Body. Geist replaces Inter per the design handoff.
+const sans = Geist({
   subsets: ['latin', 'latin-ext'],
+  weight: ['400', '500', '600'],
   variable: '--font-sans',
+  display: 'swap',
+});
+
+// Display: headings, prices, the wordmark.
+const display = Bricolage_Grotesque({
+  subsets: ['latin', 'latin-ext'],
+  weight: ['500', '600', '700'],
+  variable: '--font-display',
+  display: 'swap',
+});
+
+// Creators write in Hindi and Hinglish and the generated bio is often
+// mixed script. Neither Geist nor Bricolage covers Devanagari, so it is
+// loaded separately and sits behind both in the font stack. The previous
+// comment claimed Inter carried a Devanagari subset; it does not, so
+// Hindi text was silently falling back to a system face.
+const deva = Noto_Sans_Devanagari({
+  subsets: ['devanagari'],
+  weight: ['400', '500', '600'],
+  variable: '--font-deva',
   display: 'swap',
 });
 
@@ -30,8 +50,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={sans.variable}>
-      <body className="min-h-dvh font-sans antialiased">{children}</body>
+    <html lang="en" className={`${sans.variable} ${display.variable} ${deva.variable}`}>
+      <body className="min-h-dvh bg-paper font-sans text-ink antialiased">{children}</body>
     </html>
   );
 }
