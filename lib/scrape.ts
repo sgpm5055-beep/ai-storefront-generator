@@ -87,6 +87,23 @@ export function normaliseHandle(input: string): string | null {
  * PRD §FR2 requires this split; the spike proved it is also the only way
  * to get a fast first response.
  */
+/**
+ * Is this profile record too empty to build from?
+ *
+ * Pure and exported so the rule has tests: it has now been wrong twice.
+ * The scraper sometimes returns a real-looking but wrong/empty record
+ * instead of an error, and the first version of this guard only caught
+ * it below 10 followers — @warikoo came back with 27 and @cultfitofficial
+ * with 229, so both slipped through and the build blamed the creator for
+ * posts it never actually read.
+ *
+ * postCount === 0 is the reliable signal: the pipeline needs three usable
+ * posts, so zero can never succeed regardless of follower count.
+ */
+export function profileIsUnreadable(postCount: number | null): boolean {
+  return (postCount ?? 0) === 0;
+}
+
 export async function fetchProfile(handle: string): Promise<ScrapedProfile> {
   const items = await runActor({
     directUrls: [`https://www.instagram.com/${handle}/`],
@@ -106,8 +123,20 @@ export async function fetchProfile(handle: string): Promise<ScrapedProfile> {
 
   // The spike hit this: a non-existent handle comes back as a real-looking
   // record with 2 followers and 0 posts rather than an error.
-  if ((followers ?? 0) < 10 && (postCount ?? 0) === 0) {
-    throw new ScrapeError('handle looks empty or does not exist', 'not_found');
+  //
+  // Testing ten real handles widened it. @warikoo (~1.5M followers) came
+  // back as name="", 27 followers, 0 posts; @cultfitofficial as 229
+  // followers, 0 posts. Both cleared the `< 10 followers` bar, so the
+  // build continued against the wrong account and then told a real
+  // creator THEIR posts were too thin — blaming them for our bad read.
+  //
+  // postCount === 0 is the reliable tell: no account with zero posts can
+  // yield the three usable ones the pipeline needs, so there is nothing
+  // to gain by continuing, whatever the follower count says.
+  if (profileIsUnreadable(postCount)) {
+    // 'no_posts', not 'not_found': telling a real creator with 1.5M
+    // followers to "check the spelling" is both wrong and insulting.
+    throw new ScrapeError('profile returned zero posts', 'no_posts');
   }
   if (p.private === true) throw new ScrapeError('account is private', 'private');
 
