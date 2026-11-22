@@ -244,6 +244,14 @@ export async function markFailed(
   reason: string,
   found?: { name: string | null; avatarUrl: string | null; followers: number | null },
 ): Promise<void> {
+  // Record the REASON FIRST. The build screen polls every 1.5s and reads
+  // the reason off the failed job row; if status flips to 'failed' before
+  // that row exists, the poll finds no reason and shows the generic "We
+  // could not build this store." instead of the real, actionable message.
+  // Observed in testing on @gauravtaneja. The next poll self-corrects, but
+  // a creator should never see the wrong sentence even for 1.5s.
+  await recordStage(storeId, 'check', 'failed', undefined, reason);
+
   // Keep whatever the scrape already learned. A build that found the
   // creator and then stopped should still be able to greet them by name;
   // dropping it makes the failure screen read as if nothing worked.
@@ -253,7 +261,6 @@ export async function markFailed(
     ...(found?.avatarUrl ? { avatar_url: found.avatarUrl } : {}),
     ...(found?.followers ? { followers: found.followers } : {}),
   }).eq('id', storeId);
-  await recordStage(storeId, 'check', 'failed', undefined, reason);
 }
 
 export async function getStoreById(id: string): Promise<StoreRow | null> {
