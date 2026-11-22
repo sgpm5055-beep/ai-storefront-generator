@@ -37,7 +37,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ token: string
   // The creator's words are their own, but a banned claim must not reach a
   // published page even when typed by hand. PRD §Guardrails.
   if (typeof body.value === 'string') {
-    const violations = checkField(body.field, body.value, regulatedNicheFor(store.niche ?? ''));
+    // allNiches: the creator is typing freely, so the store's niche does
+    // not bound what they might claim. A food store can still receive a
+    // financial guarantee by hand.
+    const violations = checkField(
+      body.field, body.value, regulatedNicheFor(store.niche ?? ''), true,
+    );
     if (hasBlockingViolation(violations)) {
       return Response.json({
         error: 'That wording could get the page taken down. Try saying it without the guarantee.',

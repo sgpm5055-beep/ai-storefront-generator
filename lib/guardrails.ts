@@ -65,11 +65,30 @@ const RULES: Rule[] = [
 ];
 
 /** Scan one field. Rules for other niches are skipped. */
-export function checkField(field: string, text: string, niche: RegulatedNiche): PolicyViolation[] {
+/**
+ * Check one field.
+ *
+ * `allNiches` ignores the niche filter and runs every rule. Use it for
+ * text the CREATOR TYPED, where the stored niche says nothing about what
+ * they might write: a food creator can type "guaranteed returns, 10x your
+ * money" into their bio, and the money rules would be skipped because the
+ * niche is 'food'. Found by publishing a real store and typing exactly
+ * that — it saved with HTTP 200 and went live.
+ *
+ * Generated copy keeps the niche filter: there the niche is known to match
+ * the content, and running every rule on it would reject safe phrasings
+ * (a fitness coach legitimately saying "results" is not a SEBI problem).
+ */
+export function checkField(
+  field: string,
+  text: string,
+  niche: RegulatedNiche,
+  allNiches = false,
+): PolicyViolation[] {
   if (!text) return [];
   const out: PolicyViolation[] = [];
   for (const rule of RULES) {
-    if (rule.niche !== 'any' && rule.niche !== niche) continue;
+    if (!allNiches && rule.niche !== 'any' && rule.niche !== niche) continue;
     const m = text.match(rule.pattern);
     if (m) out.push({ rule: rule.id, severity: rule.severity, match: m[0], field });
   }

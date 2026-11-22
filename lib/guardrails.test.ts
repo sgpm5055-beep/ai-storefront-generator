@@ -129,3 +129,23 @@ describe('assertsCredential: a direction may not claim what we cannot evidence',
     expect(assertsCredential('Three 90 minute sessions on writing jokes')).toBe(false);
   });
 });
+
+describe('checkField allNiches: text the creator typed by hand', () => {
+  it('catches a financial guarantee typed into a food store', () => {
+    // Found live: this exact string saved with HTTP 200 on a published
+    // page, because the money rules were skipped for niche 'food'.
+    const typed = 'Guaranteed returns on every cup, 10x your money fast';
+    expect(checkField('bio', typed, 'health')).toHaveLength(0);
+    expect(checkField('bio', typed, 'health', true).length).toBeGreaterThan(0);
+  });
+
+  it('catches a health cure typed into a money store', () => {
+    const typed = 'This course will cure your diabetes';
+    expect(checkField('bio', typed, 'money', true).length).toBeGreaterThan(0);
+  });
+
+  it('still passes ordinary copy', () => {
+    expect(checkField('bio', 'I teach filter coffee at home in Bangalore.', 'money', true))
+      .toHaveLength(0);
+  });
+});
